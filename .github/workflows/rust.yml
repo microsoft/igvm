@@ -1,0 +1,52 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        features: ["", "--no-default-features"]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - uses: taiki-e/install-action@nextest
+    - name: Format
+      run: cargo fmt --all -- --check
+    - name: Check
+      run: cargo check --all-features --all-targets
+    - name: Clippy
+      run: cargo clippy --all-features --all-targets -- -D warnings
+    - name: Build
+      run: cargo build --verbose ${{ matrix.features }}
+    - name: Run unit tests
+      run: cargo nextest run --verbose ${{ matrix.features }} --profile ci --workspace
+    - name: Run doc tests
+      run: cargo test --no-fail-fast --doc --workspace
+
+  miri:
+    name: "Miri"
+    strategy:
+      matrix:
+        features: ["", "--no-default-features"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: taiki-e/install-action@nextest
+      - name: Install Miri
+        run: |
+          rustup toolchain install nightly --component miri
+          rustup override set nightly
+          cargo miri setup
+      - name: Test with Miri
+        run: cargo miri nextest run ${{ matrix.features }} --profile ci --workspace

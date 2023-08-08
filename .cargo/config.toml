@@ -1,0 +1,101 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+# Specify a common set of lints using rustflags for all targets.
+[target.'cfg(all())']
+rustflags = [
+  # Disable FPO to get full call stack as the '--call-graph=dwarf' option
+  # is not working well.
+  "-Cforce-frame-pointers=yes",
+
+  # Enable v0 symbols to get better output from `perf` and related tools.
+  "-Csymbol-mangling-version=v0",
+
+  # ============
+  # Clippy Lints
+  # ============
+
+  "-Dfuture_incompatible",
+  "-Dnonstandard_style",
+  "-Drust_2018_idioms",
+
+  "-Wunsafe_op_in_unsafe_fn",
+  "-Wclippy::await_holding_lock",
+  "-Wclippy::dbg_macro",
+  "-Wclippy::debug_assert_with_mut_call",
+  "-Wclippy::filter_map_next",
+  "-Wclippy::fn_params_excessive_bools",
+  "-Wclippy::imprecise_flops",
+  "-Wclippy::inefficient_to_string",
+  "-Wclippy::linkedlist",
+  "-Wclippy::lossy_float_literal",
+  "-Wclippy::macro_use_imports",
+  "-Wclippy::match_on_vec_items",
+  "-Wclippy::needless_continue",
+  "-Wclippy::option_option",
+  "-Wclippy::ref_option_ref",
+  "-Wclippy::rest_pat_in_fully_bound_structs",
+  "-Wclippy::string_to_string",
+  "-Wclippy::suboptimal_flops",
+  "-Wclippy::missing_safety_doc",
+  "-Wclippy::undocumented_unsafe_blocks",
+
+  # Possible future additions:
+  #
+  # useful, but _very_ tedious to fix
+  #   "-Wclippy::doc_markdown",
+  # will be useful to weed-out stubbed codepaths in production
+  #   "-Wclippy::todo",
+  #   "-Wclippy::unimplemented",
+  # useful, but will require a follow-up PR to enable
+  #   "-Wclippy::map_err_ignore",
+  # useful, but requires a follow-up PR to enable
+  #   "-Wclippy::unused_self",
+
+  # Nested if / else if statements can be easier to read than an equivalent
+  # flattened statements.
+  "-Aclippy::collapsible_else_if",
+  "-Aclippy::collapsible_if",
+  # There are types where it makes sense to define the length, but it can never
+  # be empty. This lint is reasonable for container-like data-structures, but
+  # makes less sense for hardware-backed data structures.
+  "-Aclippy::len_without_is_empty",
+  # While it's generally a good idea to derive / implement `Default` when
+  # appropriate, there are many types in the HvLite codebase where a type has a
+  # `new()` method, but no sensible "Default".
+  "-Aclippy::new_without_default",
+  # This is the #1 most commonly ignored lint for a reason (at least according
+  # to [this famous issue](https://github.com/rust-lang/rust-clippy/issues/5418)
+  # on the clippy GitHub repo)! There are plenty of perfectly reasonable
+  # functions that require a large number of non-optional arguments,
+  # particularly when working with low-level hardware APIs.
+  "-Aclippy::too_many_arguments",
+  # Pointer casts are harder to grok than an equivalent \*explicitly annotated\*
+  # `transmute`. Emphasis on the fact that the transmute should _not_ infer the
+  # underlying types, and that the turbofish operator should be used to clearly
+  # specify which types are being transmuted.
+  #
+  # e.g: `let callback = transmute::<*const c_void, *const fn() -> c_int>`
+  "-Aclippy::transmutes_expressible_as_ptr_casts",
+  # This is a heuristic based lint that isn't always appropriate. While it's
+  # often a good to decompose complex types into more digestible chunks, there
+  # are many cases where a one-off complex type is required, and suppressing
+  # this lint will simply add line-noise.
+  "-Aclippy::type_complexity",
+  # This lint attempts to simplify usages of if let usage in a loop where only
+  # one variant type is used. While somewhat useful, its suggestions can lead to
+  # throwing away potentially useful error information in non-obvious ways.
+  "-Aclippy::manual_flatten",
+  # This lint warns about comparing boolean values in an `assert_eq!` statement when `assert!`
+  # could be used instead. While shorter, the explicit comparison can be more obvious to read
+  # in certain cases than unary operators with `assert!`.
+  "-Aclippy::bool_assert_comparison",
+  # This lint suggests collapsing Box::new(Foo::default()) into Box::default(). We often
+  # prefer to specify types completely for local code clarity's sake.
+  "-Aclippy::box_default",
+  # This lint is purely style, and we are ok with inlined and uninlined format args.
+  "-Aclippy::uninlined_format_args",
+
+### ENABLE_IN_CI "-Dwarnings",
+
+]

@@ -1,0 +1,25 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+[package]
+name = "igvm"
+version = "0.1.0"
+edition = "2021"
+description = "The igvm crate is an implementation of a parser for the Independent Guest Virtual Machine (IGVM) file format."
+license = "MIT"
+authors = ["Microsoft"]
+repository = "https://github.com/microsoft/igvm"
+keywords = ["virtualization"]
+categories = ["virtualization", "parser-implementations"]
+
+[dependencies]
+igvm_defs = { workspace = true, features = ["unstable"] }
+
+bitfield-struct.workspace = true
+range_map_vec.workspace = true
+crc32fast.workspace = true
+hex.workspace = true
+open-enum.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+zerocopy = { workspace = true, features = ["alloc"] }

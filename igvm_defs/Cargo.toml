@@ -1,0 +1,32 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+[package]
+name = "igvm_defs"
+version = "0.1.0"
+edition = "2021"
+description = "The igvm_defs crate is the specification for the Independent Guest Virtual Machine (IGVM) file format."
+license = "MIT"
+authors = ["Microsoft"]
+repository = "https://github.com/microsoft/igvm"
+keywords = ["virtualization"]
+categories = ["virtualization", "no-std"]
+
+[package.metadata.docs.rs]
+# Document all features
+all-features = true
+# Defines the configuration attribute `docsrs` which emits nicer docs via
+# nightly features.
+#
+# Run locally with RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
+rustdoc-args = ["--cfg", "docsrs"]
+
+[features]
+default = []
+unstable = [] # For types that are not yet stabilized in an official version
+
+[dependencies]
+bitfield-struct.workspace = true
+open-enum.workspace = true
+static_assertions.workspace = true
+zerocopy.workspace = true
