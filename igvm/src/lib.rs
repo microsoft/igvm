@@ -211,6 +211,28 @@ impl IgvmPlatformHeader {
             Err(BinaryHeaderError::InvalidVariableHeaderType)
         }
     }
+
+    /// Write the binary representation of the header and any associated file
+    /// data to the supplied variable_headers and file data vectors.
+    /// file_data_offset points to the start of the data section to be encoded
+    /// in the variable header if this data has a file data component.
+    #[cfg(feature = "igvm-c")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "igvm-c")))]
+    fn write_binary_header(&self, variable_headers: &mut Vec<u8>) -> Result<(), BinaryHeaderError> {
+        // Only serialize this header if valid.
+        self.validate()?;
+
+        match self {
+            IgvmPlatformHeader::SupportedPlatform(platform) => {
+                append_header(
+                    platform,
+                    IgvmVariableHeaderType::IGVM_VHT_SUPPORTED_PLATFORM,
+                    variable_headers,
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Represents a structure in an IGVM variable header section, initialization
@@ -913,7 +935,7 @@ impl IgvmDirectiveHeader {
     }
 
     /// Write the binary representation of the header and any associated file
-    /// data to te supplied variable_headers and file data vectors.
+    /// data to the supplied variable_headers and file data vectors.
     /// file_data_offset points to the start of the data section to be encoded
     /// in the variable header if this data has a file data component.
     pub fn write_binary_header(
