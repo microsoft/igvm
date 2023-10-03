@@ -7,45 +7,58 @@
 //! Provides an alternative interface for using the IGVM crate that
 //! is suitable for calling from C.
 
+// UNSAFETY: This module requires the use of 'unsafe' as it implements
+// extern "C" functions for providing a C API.
 #![allow(unsafe_code)]
 
 use std::collections::BTreeMap;
 use std::ptr::null;
 use std::sync::atomic::AtomicI32;
 use std::sync::atomic::Ordering;
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::Mutex;
+use std::sync::MutexGuard;
+use std::sync::OnceLock;
 
 use crate::{Error, IgvmFile};
 use open_enum::open_enum;
 
-pub const IGVMAPI_OK: i32 = 0;
-pub const IGVMAPI_INVALID_PARAMETER: i32 = -1;
-pub const IGVMAPI_NO_DATA: i32 = -2;
-pub const IGVMAPI_INVALID_FILE: i32 = -3;
-pub const IGVMAPI_INVALID_HANDLE: i32 = -4;
-pub const IGVMAPI_NO_PLATFORM_HEADERS: i32 = -5;
-pub const IGVMAPI_FILE_DATA_SECTION_TOO_LARGE: i32 = -6;
-pub const IGVMAPI_VARIABLE_HEADER_SECTION_TOO_LARGE: i32 = -7;
-pub const IGVMAPI_TOTAL_FILE_SIZE_TOO_LARGE: i32 = -8;
-pub const IGVMAPI_INVALID_BINARY_PLATFORM_HEADER: i32 = -9;
-pub const IGVMAPI_INVALID_BINARY_INITIALIZATION_HEADER: i32 = -10;
-pub const IGVMAPI_INVALID_BINARY_DIRECTIVE_HEADER: i32 = -11;
-pub const IGVMAPI_MULTIPLE_PLATFORM_HEADERS_WITH_SAME_ISOLATION: i32 = -12;
-pub const IGVMAPI_INVALID_PARAMETER_AREA_INDEX: i32 = -13;
-pub const IGVMAPI_INVALID_PLATFORM_TYPE: i32 = -14;
-pub const IGVMAPI_NO_FREE_COMPATIBILITY_MASKS: i32 = -15;
-pub const IGVMAPI_INVALID_FIXED_HEADER: i32 = -16;
-pub const IGVMAPI_INVALID_BINARY_VARIABLE_HEADER_SECTION: i32 = -17;
-pub const IGVMAPI_INVALID_CHECKSUM: i32 = -18;
-pub const IGVMAPI_MULTIPLE_PAGE_TABLE_RELOCATION_HEADERS: i32 = -19;
-pub const IGVMAPI_RELOCATION_REGIONS_OVERLAP: i32 = -20;
-pub const IGVMAPI_PARAMETER_INSERT_INSIDE_PAGE_TABLE_REGION: i32 = -21;
-pub const IGVMAPI_NO_MATCHING_VP_CONTEXT: i32 = -22;
-pub const IGVMAPI_PLATFORM_ARCH_UNSUPPORTED: i32 = -23;
-pub const IGVMAPI_INVALID_HEADER_ARCH: i32 = -24;
-pub const IGVMAPI_UNSUPPORTED_PAGE_SIZE: i32 = -25;
-pub const IGVMAPI_INVALID_FIXED_HEADER_ARCH: i32 = -26;
-pub const IGVMAPI_MERGE_REVISION: i32 = -27;
+/// An enumeration of the possible results that can be returned from C API
+/// functions. Some of the extern "C" functions return a positive value
+/// representing a handle or a count on success, or an IgvmResult value on
+/// error. Therefore all error values must be negative.
+#[open_enum]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(i32)]
+pub enum IgvmResult {
+    IGVMAPI_OK = 0,
+    IGVMAPI_INVALID_PARAMETER = -1,
+    IGVMAPI_NO_DATA = -2,
+    IGVMAPI_INVALID_FILE = -3,
+    IGVMAPI_INVALID_HANDLE = -4,
+    IGVMAPI_NO_PLATFORM_HEADERS = -5,
+    IGVMAPI_FILE_DATA_SECTION_TOO_LARGE = -6,
+    IGVMAPI_VARIABLE_HEADER_SECTION_TOO_LARGE = -7,
+    IGVMAPI_TOTAL_FILE_SIZE_TOO_LARGE = -8,
+    IGVMAPI_INVALID_BINARY_PLATFORM_HEADER = -9,
+    IGVMAPI_INVALID_BINARY_INITIALIZATION_HEADER = -10,
+    IGVMAPI_INVALID_BINARY_DIRECTIVE_HEADER = -11,
+    IGVMAPI_MULTIPLE_PLATFORM_HEADERS_WITH_SAME_ISOLATION = -12,
+    IGVMAPI_INVALID_PARAMETER_AREA_INDEX = -13,
+    IGVMAPI_INVALID_PLATFORM_TYPE = -14,
+    IGVMAPI_NO_FREE_COMPATIBILITY_MASKS = -15,
+    IGVMAPI_INVALID_FIXED_HEADER = -16,
+    IGVMAPI_INVALID_BINARY_VARIABLE_HEADER_SECTION = -17,
+    IGVMAPI_INVALID_CHECKSUM = -18,
+    IGVMAPI_MULTIPLE_PAGE_TABLE_RELOCATION_HEADERS = -19,
+    IGVMAPI_RELOCATION_REGIONS_OVERLAP = -20,
+    IGVMAPI_PARAMETER_INSERT_INSIDE_PAGE_TABLE_REGION = -21,
+    IGVMAPI_NO_MATCHING_VP_CONTEXT = -22,
+    IGVMAPI_PLATFORM_ARCH_UNSUPPORTED = -23,
+    IGVMAPI_INVALID_HEADER_ARCH = -24,
+    IGVMAPI_UNSUPPORTED_PAGE_SIZE = -25,
+    IGVMAPI_INVALID_FIXED_HEADER_ARCH = -26,
+    IGVMAPI_MERGE_REVISION = -27,
+}
 
 type IgvmHandle = i32;
 
@@ -72,24 +85,26 @@ struct IgvmFileHandleLock<'a> {
 }
 
 impl<'a> IgvmFileHandleLock<'a> {
-    pub fn new(handle: IgvmHandle) -> Result<Self, i32> {
+    pub fn new(handle: IgvmHandle) -> Result<Self, IgvmResult> {
         let lock = IGVM_HANDLES
             .get()
-            .ok_or(IGVMAPI_INVALID_HANDLE)?
+            .ok_or(IgvmResult::IGVMAPI_INVALID_HANDLE)?
             .lock()
             .unwrap();
 
         Ok(IgvmFileHandleLock { lock, handle })
     }
 
-    pub fn get(&self) -> Result<&IgvmFileInstance, i32> {
-        self.lock.get(&self.handle).ok_or(IGVMAPI_INVALID_HANDLE)
+    pub fn get(&self) -> Result<&IgvmFileInstance, IgvmResult> {
+        self.lock
+            .get(&self.handle)
+            .ok_or(IgvmResult::IGVMAPI_INVALID_HANDLE)
     }
 
-    pub fn get_mut(&mut self) -> Result<&mut IgvmFileInstance, i32> {
+    pub fn get_mut(&mut self) -> Result<&mut IgvmFileInstance, IgvmResult> {
         self.lock
             .get_mut(&self.handle)
-            .ok_or(IGVMAPI_INVALID_HANDLE)
+            .ok_or(IgvmResult::IGVMAPI_INVALID_HANDLE)
     }
 }
 
@@ -99,44 +114,54 @@ fn new_handle() -> i32 {
         .fetch_add(1, Ordering::Relaxed)
 }
 
-fn translate_error(error: Error) -> i32 {
+fn translate_error(error: Error) -> IgvmResult {
     match error {
-        Error::NoPlatformHeaders => IGVMAPI_NO_PLATFORM_HEADERS,
-        Error::FileDataSectionTooLarge => IGVMAPI_FILE_DATA_SECTION_TOO_LARGE,
-        Error::VariableHeaderSectionTooLarge => IGVMAPI_VARIABLE_HEADER_SECTION_TOO_LARGE,
-        Error::TotalFileSizeTooLarge => IGVMAPI_TOTAL_FILE_SIZE_TOO_LARGE,
-        Error::InvalidBinaryPlatformHeader(_) => IGVMAPI_INVALID_BINARY_PLATFORM_HEADER,
-        Error::InvalidBinaryInitializationHeader(_) => IGVMAPI_INVALID_BINARY_INITIALIZATION_HEADER,
-        Error::InvalidBinaryDirectiveHeader(_) => IGVMAPI_INVALID_BINARY_DIRECTIVE_HEADER,
-        Error::MultiplePlatformHeadersWithSameIsolation => {
-            IGVMAPI_MULTIPLE_PLATFORM_HEADERS_WITH_SAME_ISOLATION
+        Error::NoPlatformHeaders => IgvmResult::IGVMAPI_NO_PLATFORM_HEADERS,
+        Error::FileDataSectionTooLarge => IgvmResult::IGVMAPI_FILE_DATA_SECTION_TOO_LARGE,
+        Error::VariableHeaderSectionTooLarge => {
+            IgvmResult::IGVMAPI_VARIABLE_HEADER_SECTION_TOO_LARGE
         }
-        Error::InvalidParameterAreaIndex => IGVMAPI_INVALID_PARAMETER_AREA_INDEX,
-        Error::InvalidPlatformType => IGVMAPI_INVALID_PLATFORM_TYPE,
-        Error::NoFreeCompatibilityMasks => IGVMAPI_NO_FREE_COMPATIBILITY_MASKS,
-        Error::InvalidFixedHeader => IGVMAPI_INVALID_FIXED_HEADER,
-        Error::InvalidBinaryVariableHeaderSection => IGVMAPI_INVALID_BINARY_VARIABLE_HEADER_SECTION,
+        Error::TotalFileSizeTooLarge => IgvmResult::IGVMAPI_TOTAL_FILE_SIZE_TOO_LARGE,
+        Error::InvalidBinaryPlatformHeader(_) => IgvmResult::IGVMAPI_INVALID_BINARY_PLATFORM_HEADER,
+        Error::InvalidBinaryInitializationHeader(_) => {
+            IgvmResult::IGVMAPI_INVALID_BINARY_INITIALIZATION_HEADER
+        }
+        Error::InvalidBinaryDirectiveHeader(_) => {
+            IgvmResult::IGVMAPI_INVALID_BINARY_DIRECTIVE_HEADER
+        }
+        Error::MultiplePlatformHeadersWithSameIsolation => {
+            IgvmResult::IGVMAPI_MULTIPLE_PLATFORM_HEADERS_WITH_SAME_ISOLATION
+        }
+        Error::InvalidParameterAreaIndex => IgvmResult::IGVMAPI_INVALID_PARAMETER_AREA_INDEX,
+        Error::InvalidPlatformType => IgvmResult::IGVMAPI_INVALID_PLATFORM_TYPE,
+        Error::NoFreeCompatibilityMasks => IgvmResult::IGVMAPI_NO_FREE_COMPATIBILITY_MASKS,
+        Error::InvalidFixedHeader => IgvmResult::IGVMAPI_INVALID_FIXED_HEADER,
+        Error::InvalidBinaryVariableHeaderSection => {
+            IgvmResult::IGVMAPI_INVALID_BINARY_VARIABLE_HEADER_SECTION
+        }
         Error::InvalidChecksum {
             expected: _,
             header_value: _,
-        } => IGVMAPI_INVALID_CHECKSUM,
-        Error::MultiplePageTableRelocationHeaders => IGVMAPI_MULTIPLE_PAGE_TABLE_RELOCATION_HEADERS,
-        Error::RelocationRegionsOverlap => IGVMAPI_RELOCATION_REGIONS_OVERLAP,
-        Error::ParameterInsertInsidePageTableRegion => {
-            IGVMAPI_PARAMETER_INSERT_INSIDE_PAGE_TABLE_REGION
+        } => IgvmResult::IGVMAPI_INVALID_CHECKSUM,
+        Error::MultiplePageTableRelocationHeaders => {
+            IgvmResult::IGVMAPI_MULTIPLE_PAGE_TABLE_RELOCATION_HEADERS
         }
-        Error::NoMatchingVpContext => IGVMAPI_NO_MATCHING_VP_CONTEXT,
+        Error::RelocationRegionsOverlap => IgvmResult::IGVMAPI_RELOCATION_REGIONS_OVERLAP,
+        Error::ParameterInsertInsidePageTableRegion => {
+            IgvmResult::IGVMAPI_PARAMETER_INSERT_INSIDE_PAGE_TABLE_REGION
+        }
+        Error::NoMatchingVpContext => IgvmResult::IGVMAPI_NO_MATCHING_VP_CONTEXT,
         Error::PlatformArchUnsupported {
             arch: _,
             platform: _,
-        } => IGVMAPI_PLATFORM_ARCH_UNSUPPORTED,
+        } => IgvmResult::IGVMAPI_PLATFORM_ARCH_UNSUPPORTED,
         Error::InvalidHeaderArch {
             arch: _,
             header_type: _,
-        } => IGVMAPI_INVALID_HEADER_ARCH,
-        Error::UnsupportedPageSize(_) => IGVMAPI_UNSUPPORTED_PAGE_SIZE,
-        Error::InvalidFixedHeaderArch(_) => IGVMAPI_INVALID_FIXED_HEADER_ARCH,
-        Error::MergeRevision => IGVMAPI_MERGE_REVISION,
+        } => IgvmResult::IGVMAPI_INVALID_HEADER_ARCH,
+        Error::UnsupportedPageSize(_) => IgvmResult::IGVMAPI_UNSUPPORTED_PAGE_SIZE,
+        Error::InvalidFixedHeaderArch(_) => IgvmResult::IGVMAPI_INVALID_FIXED_HEADER_ARCH,
+        Error::MergeRevision => IgvmResult::IGVMAPI_MERGE_REVISION,
     }
 }
 
@@ -157,29 +182,29 @@ fn igvm_create(file: IgvmFile) -> IgvmHandle {
 }
 
 /// Returns a pointer to the array of bytes in a buffer.
-fn get_buffer(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> Result<*const u8, i32> {
+fn get_buffer(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> Result<*const u8, IgvmResult> {
     let handle_lock = IgvmFileHandleLock::new(igvm_handle)?;
     let igvm = handle_lock.get()?;
     Ok(igvm
         .buffers
         .get(&buffer_handle)
-        .ok_or(IGVMAPI_INVALID_HANDLE)?
+        .ok_or(IgvmResult::IGVMAPI_INVALID_HANDLE)?
         .as_ptr())
 }
 
 /// Returns the size of a buffer.
-fn get_buffer_size(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> Result<i32, i32> {
+fn get_buffer_size(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> Result<i32, IgvmResult> {
     let handle_lock = IgvmFileHandleLock::new(igvm_handle)?;
     let igvm = handle_lock.get()?;
     Ok(igvm
         .buffers
         .get(&buffer_handle)
-        .ok_or(IGVMAPI_INVALID_HANDLE)?
+        .ok_or(IgvmResult::IGVMAPI_INVALID_HANDLE)?
         .len() as i32)
 }
 
 /// Frees a buffer.
-fn free_buffer(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> Result<(), i32> {
+fn free_buffer(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> Result<(), IgvmResult> {
     let mut handle_lock = IgvmFileHandleLock::new(igvm_handle)?;
     let igvm = handle_lock.get_mut()?;
     igvm.buffers.remove(&buffer_handle);
@@ -188,7 +213,7 @@ fn free_buffer(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> Result<(),
 
 /// Get the count of headers for a particular section in a previously parsed
 /// IGVM file.
-fn header_count(handle: IgvmHandle, section: IgvmHeaderSection) -> Result<i32, i32> {
+fn header_count(handle: IgvmHandle, section: IgvmHeaderSection) -> Result<i32, IgvmResult> {
     let mut handle_lock = IgvmFileHandleLock::new(handle)?;
     let igvm = handle_lock.get_mut()?;
     match section {
@@ -197,13 +222,17 @@ fn header_count(handle: IgvmHandle, section: IgvmHeaderSection) -> Result<i32, i
             Ok(igvm.file.initialization_headers.len() as i32)
         }
         IgvmHeaderSection::HEADER_SECTION_DIRECTIVE => Ok(igvm.file.directive_headers.len() as i32),
-        _ => Err(IGVMAPI_INVALID_PARAMETER),
+        _ => Err(IgvmResult::IGVMAPI_INVALID_PARAMETER),
     }
 }
 
 /// Get the header type for the entry with the given index for a particular
 /// section in a previously parsed IGVM file.
-fn get_header_type(handle: IgvmHandle, section: IgvmHeaderSection, index: u32) -> Result<i32, i32> {
+fn get_header_type(
+    handle: IgvmHandle,
+    section: IgvmHeaderSection,
+    index: u32,
+) -> Result<i32, IgvmResult> {
     let mut handle_lock = IgvmFileHandleLock::new(handle)?;
     let igvm = handle_lock.get_mut()?;
     match section {
@@ -211,24 +240,24 @@ fn get_header_type(handle: IgvmHandle, section: IgvmHeaderSection, index: u32) -
             .file
             .platform_headers
             .get(index as usize)
-            .ok_or(IGVMAPI_INVALID_PARAMETER)?
+            .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
             .header_type()
             .0 as i32),
         IgvmHeaderSection::HEADER_SECTION_INITIALIZATION => Ok(igvm
             .file
             .initialization_headers
             .get(index as usize)
-            .ok_or(IGVMAPI_INVALID_PARAMETER)?
+            .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
             .header_type()
             .0 as i32),
         IgvmHeaderSection::HEADER_SECTION_DIRECTIVE => Ok(igvm
             .file
             .directive_headers
             .get(index as usize)
-            .ok_or(IGVMAPI_INVALID_PARAMETER)?
+            .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
             .header_type()
             .0 as i32),
-        _ => Err(IGVMAPI_INVALID_PARAMETER),
+        _ => Err(IgvmResult::IGVMAPI_INVALID_PARAMETER),
     }
 }
 
@@ -239,7 +268,7 @@ fn get_header(
     handle: IgvmHandle,
     section: IgvmHeaderSection,
     index: u32,
-) -> Result<IgvmHandle, i32> {
+) -> Result<IgvmHandle, IgvmResult> {
     let mut header_binary = Vec::<u8>::new();
 
     let mut handle_lock = IgvmFileHandleLock::new(handle)?;
@@ -250,28 +279,28 @@ fn get_header(
             igvm.file
                 .platform_headers
                 .get(index as usize)
-                .ok_or(IGVMAPI_INVALID_PARAMETER)?
+                .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
                 .write_binary_header(&mut header_binary)
-                .map_err(|_| IGVMAPI_INVALID_FILE)?;
+                .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
         }
         IgvmHeaderSection::HEADER_SECTION_INITIALIZATION => {
             igvm.file
                 .initialization_headers
                 .get(index as usize)
-                .ok_or(IGVMAPI_INVALID_PARAMETER)?
+                .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
                 .write_binary_header(&mut header_binary)
-                .map_err(|_| IGVMAPI_INVALID_FILE)?;
+                .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
         }
         IgvmHeaderSection::HEADER_SECTION_DIRECTIVE => {
             igvm.file
                 .directive_headers
                 .get(index as usize)
-                .ok_or(IGVMAPI_INVALID_PARAMETER)?
+                .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
                 .write_binary_header(0, &mut header_binary, &mut Vec::<u8>::new())
-                .map_err(|_| IGVMAPI_INVALID_FILE)?;
+                .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
         }
         _ => {
-            return Err(IGVMAPI_INVALID_PARAMETER);
+            return Err(IgvmResult::IGVMAPI_INVALID_PARAMETER);
         }
     }
     let header_handle = new_handle();
@@ -286,7 +315,7 @@ fn get_header_data(
     handle: IgvmHandle,
     section: IgvmHeaderSection,
     index: u32,
-) -> Result<IgvmHandle, i32> {
+) -> Result<IgvmHandle, IgvmResult> {
     let mut handle_lock = IgvmFileHandleLock::new(handle)?;
     let igvm = handle_lock.get_mut()?;
     let mut header_data = Vec::<u8>::new();
@@ -296,15 +325,15 @@ fn get_header_data(
             .file
             .directive_headers
             .get(index as usize)
-            .ok_or(IGVMAPI_INVALID_PARAMETER)?;
+            .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
         header
             .write_binary_header(0, &mut Vec::<u8>::new(), &mut header_data)
-            .map_err(|_| IGVMAPI_INVALID_FILE)?;
+            .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
     } else {
-        return Err(IGVMAPI_INVALID_PARAMETER);
+        return Err(IgvmResult::IGVMAPI_INVALID_PARAMETER);
     }
     if header_data.is_empty() {
-        Err(IGVMAPI_NO_DATA)
+        Err(IgvmResult::IGVMAPI_NO_DATA)
     } else {
         let header_data_handle = new_handle();
         igvm.buffers.insert(header_data_handle, header_data);
@@ -343,7 +372,7 @@ pub unsafe extern "C" fn igvm_get_buffer(
 pub extern "C" fn igvm_get_buffer_size(igvm_handle: IgvmHandle, buffer_handle: IgvmHandle) -> i32 {
     match get_buffer_size(igvm_handle, buffer_handle) {
         Ok(len) => len,
-        Err(e) => e,
+        Err(e) => e.0,
     }
 }
 
@@ -375,7 +404,7 @@ pub unsafe extern "C" fn igvm_new_from_binary(data: *const u8, len: u32) -> Igvm
 
     match result {
         Ok(file) => igvm_create(file),
-        Err(e) => translate_error(e),
+        Err(e) => translate_error(e).0,
     }
 }
 
@@ -396,7 +425,7 @@ pub extern "C" fn igvm_free(handle: IgvmHandle) {
 #[no_mangle]
 pub extern "C" fn igvm_header_count(handle: IgvmHandle, section: IgvmHeaderSection) -> i32 {
     header_count(handle, section)
-        .or_else(|e| Ok(e) as Result<i32, i32>)
+        .or_else(|e| Ok(e.0) as Result<i32, i32>)
         .unwrap()
 }
 
@@ -412,7 +441,7 @@ pub extern "C" fn igvm_get_header_type(
     index: u32,
 ) -> i32 {
     get_header_type(handle, section, index)
-        .or_else(|e| Ok(e) as Result<i32, i32>)
+        .or_else(|e| Ok(e.0) as Result<i32, i32>)
         .unwrap()
 }
 
@@ -435,7 +464,7 @@ pub extern "C" fn igvm_get_header(
     index: u32,
 ) -> IgvmHandle {
     get_header(handle, section, index)
-        .or_else(|e| Ok(e) as Result<IgvmHandle, i32>)
+        .or_else(|e| Ok(e.0) as Result<IgvmHandle, i32>)
         .unwrap()
 }
 
@@ -458,6 +487,6 @@ pub extern "C" fn igvm_get_header_data(
     index: u32,
 ) -> IgvmHandle {
     get_header_data(handle, section, index)
-        .or_else(|e| Ok(e) as Result<IgvmHandle, i32>)
+        .or_else(|e| Ok(e.0) as Result<IgvmHandle, i32>)
         .unwrap()
 }

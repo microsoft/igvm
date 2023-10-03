@@ -291,7 +291,7 @@ impl IgvmInitializationHeader {
     #[cfg_attr(docsrs, doc(cfg(feature = "igvm-c")))]
     fn header_type(&self) -> IgvmVariableHeaderType {
         match self {
-            IgvmInitializationHeader::SnpPolicy { .. } => {
+            IgvmInitializationHeader::GuestPolicy { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY
             }
             IgvmInitializationHeader::RelocatableRegion { .. } => {
