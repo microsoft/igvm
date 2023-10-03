@@ -132,6 +132,17 @@ impl IgvmPlatformHeader {
         size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional
     }
 
+    /// Get the [`IgvmVariableHeaderType`] for the platform header.
+    #[cfg(feature = "igvm-c")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "igvm-c")))]
+    fn header_type(&self) -> IgvmVariableHeaderType {
+        match self {
+            IgvmPlatformHeader::SupportedPlatform(_) => {
+                IgvmVariableHeaderType::IGVM_VHT_SUPPORTED_PLATFORM
+            }
+        }
+    }
+
     /// Checks if this header contains valid state.
     fn validate(&self) -> Result<(), BinaryHeaderError> {
         match self {
@@ -248,6 +259,23 @@ impl IgvmInitializationHeader {
         };
 
         size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional
+    }
+
+    /// Get the [`IgvmVariableHeaderType`] for the initialization header.
+    #[cfg(feature = "igvm-c")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "igvm-c")))]
+    fn header_type(&self) -> IgvmVariableHeaderType {
+        match self {
+            IgvmInitializationHeader::SnpPolicy { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY
+            }
+            IgvmInitializationHeader::RelocatableRegion { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_RELOCATABLE_REGION
+            }
+            IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION
+            }
+        }
     }
 
     /// Checks if this header contains valid state.
@@ -840,6 +868,48 @@ impl IgvmDirectiveHeader {
         };
 
         align_8(size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional)
+    }
+
+    /// Get the [`IgvmVariableHeaderType`] for the directive header.
+    #[cfg(feature = "igvm-c")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "igvm-c")))]
+    fn header_type(&self) -> IgvmVariableHeaderType {
+        match self {
+            IgvmDirectiveHeader::PageData { .. } => IgvmVariableHeaderType::IGVM_VHT_PAGE_DATA,
+            IgvmDirectiveHeader::ParameterArea { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_PARAMETER_AREA
+            }
+            IgvmDirectiveHeader::VpCount(_) => IgvmVariableHeaderType::IGVM_VHT_VP_COUNT_PARAMETER,
+            IgvmDirectiveHeader::Srat(_) => IgvmVariableHeaderType::IGVM_VHT_SRAT,
+            IgvmDirectiveHeader::Madt(_) => IgvmVariableHeaderType::IGVM_VHT_MADT,
+            IgvmDirectiveHeader::Slit(_) => IgvmVariableHeaderType::IGVM_VHT_SLIT,
+            IgvmDirectiveHeader::Pptt(_) => IgvmVariableHeaderType::IGVM_VHT_PPTT,
+            IgvmDirectiveHeader::MmioRanges(_) => IgvmVariableHeaderType::IGVM_VHT_MMIO_RANGES,
+            IgvmDirectiveHeader::MemoryMap(_) => IgvmVariableHeaderType::IGVM_VHT_MEMORY_MAP,
+            IgvmDirectiveHeader::CommandLine(_) => IgvmVariableHeaderType::IGVM_VHT_COMMAND_LINE,
+            IgvmDirectiveHeader::DeviceTree(_) => IgvmVariableHeaderType::IGVM_VHT_DEVICE_TREE,
+            IgvmDirectiveHeader::RequiredMemory { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_REQUIRED_MEMORY
+            }
+            IgvmDirectiveHeader::SnpVpContext { .. } => IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+            IgvmDirectiveHeader::X64VbsVpContext { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
+            }
+            IgvmDirectiveHeader::AArch64VbsVpContext { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
+            }
+            IgvmDirectiveHeader::ParameterInsert(_) => {
+                IgvmVariableHeaderType::IGVM_VHT_PARAMETER_INSERT
+            }
+            IgvmDirectiveHeader::ErrorRange { .. } => IgvmVariableHeaderType::IGVM_VHT_ERROR_RANGE,
+            IgvmDirectiveHeader::SnpIdBlock { .. } => IgvmVariableHeaderType::IGVM_VHT_SNP_ID_BLOCK,
+            IgvmDirectiveHeader::VbsMeasurement { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_VBS_MEASUREMENT
+            }
+            IgvmDirectiveHeader::EnvironmentInfo(_) => {
+                IgvmVariableHeaderType::IGVM_VHT_ENVIRONMENT_INFO_PARAMETER
+            }
+        }
     }
 
     /// Write the binary representation of the header and any associated file
