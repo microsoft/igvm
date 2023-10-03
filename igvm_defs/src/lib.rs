@@ -109,6 +109,7 @@ use zerocopy::FromZeroes;
 
 pub mod dt;
 
+/// cbindgen:ignore
 #[allow(non_camel_case_types)]
 mod packed_nums {
     pub type u32_le = zerocopy::U32<zerocopy::LittleEndian>;
