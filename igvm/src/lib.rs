@@ -36,6 +36,9 @@ use zerocopy::AsBytes;
 use zerocopy::FromBytes;
 use zerocopy::FromZeroes;
 
+#[cfg(feature = "igvm-c")]
+pub mod c_api;
+
 pub mod hv_defs;
 pub mod page_table;
 mod parsing;
