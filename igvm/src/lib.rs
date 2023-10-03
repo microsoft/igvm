@@ -9,7 +9,7 @@
 //! that this parser may not implement all the specified structure types or
 //! semantics defined in the IGVM file format.
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 use hv_defs::HvArm64RegisterName;
 use hv_defs::HvX64RegisterName;
