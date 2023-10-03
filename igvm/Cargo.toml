@@ -21,6 +21,10 @@ all-features = true
 # Run locally with RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
 rustdoc-args = ["--cfg", "docsrs"]
 
+[lib]
+name = "igvm"
+crate-type = ["staticlib", "rlib"]
+
 [dependencies]
 igvm_defs = { workspace = true, features = ["unstable"] }
 
