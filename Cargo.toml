@@ -5,10 +5,12 @@
 resolver = "2"
 members = [
     "igvm",
+    "igvm_c/test_data",
 ]
 
 [workspace.dependencies]
 igvm_defs = { path = "igvm_defs", version = "0.1.3" }
+igvm = { path = "igvm", version = "0.1.3" }
 
 anyhow = "1.0"
 bitfield-struct = "0.5"
