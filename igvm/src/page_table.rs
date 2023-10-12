@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use thiserror::Error;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 const X64_CR4_LA57: u64 = 0x0000000000001000; // 5-level paging enabled
 
@@ -32,7 +33,7 @@ pub const X64_LARGE_PAGE_SIZE: u64 = 0x200000;
 /// Number of bytes in a 1GB page for X64.
 pub const X64_1GB_PAGE_SIZE: u64 = 0x40000000;
 
-#[derive(Copy, Clone, PartialEq, Eq, AsBytes, FromBytes)]
+#[derive(Copy, Clone, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
 #[repr(transparent)]
 pub struct PageTableEntry {
     entry: u64,
@@ -122,7 +123,7 @@ impl PageTableEntry {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Eq, AsBytes, FromBytes)]
+#[derive(Debug, Clone, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
 pub struct PageTable {
     entries: [PageTableEntry; PAGE_TABLE_ENTRY_COUNT],
 }
@@ -556,6 +557,7 @@ mod tests {
     use crate::hv_defs::Vtl;
     use range_map_vec::RangeMap;
     use zerocopy::FromBytes;
+    use zerocopy::FromZeroes;
 
     #[derive(Debug, Clone)]
     struct PteInfo {

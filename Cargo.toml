@@ -19,4 +19,4 @@ range_map_vec = "0.1.0"
 static_assertions = "1.1"
 thiserror = "1.0"
 tracing = "0.1"
-zerocopy = "0.6"
+zerocopy = { version = "0.7.1", features = ["alloc","derive"] }

@@ -30,6 +30,7 @@ use std::mem::size_of_val;
 use thiserror::Error;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 pub mod hv_defs;
 pub mod page_table;
@@ -3671,7 +3672,7 @@ mod tests {
         };
         let expected_header = IGVM_VHS_PAGE_DATA {
             gpa,
-            ..FromBytes::new_zeroed()
+            ..FromZeroes::new_zeroed()
         };
         test_variable_header(
             IgvmRevision::V1,
@@ -3695,7 +3696,7 @@ mod tests {
         let expected_header = IGVM_VHS_PAGE_DATA {
             gpa,
             file_offset: file_data_offset,
-            ..FromBytes::new_zeroed()
+            ..FromZeroes::new_zeroed()
         };
         data.resize(PAGE_SIZE_4K as usize, 0);
         let expected_file_data = Some(data);
@@ -3721,7 +3722,7 @@ mod tests {
         let expected_header = IGVM_VHS_PAGE_DATA {
             gpa,
             file_offset: file_data_offset,
-            ..FromBytes::new_zeroed()
+            ..FromZeroes::new_zeroed()
         };
         let expected_file_data = Some(data);
         test_variable_header(
@@ -3957,7 +3958,7 @@ mod tests {
             number_of_bytes,
             compatibility_mask,
             flags,
-            ..FromBytes::new_zeroed()
+            ..FromZeroes::new_zeroed()
         };
 
         let header = IgvmDirectiveHeader::RequiredMemory {
@@ -3985,7 +3986,7 @@ mod tests {
             number_of_bytes,
             compatibility_mask,
             flags,
-            ..FromBytes::new_zeroed()
+            ..FromZeroes::new_zeroed()
         };
 
         let header = IgvmDirectiveHeader::RequiredMemory {
