@@ -5,6 +5,7 @@
 
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 /// Virtual Event Injection
 /// Defined by the following union in C:
@@ -24,12 +25,12 @@ use zerocopy::FromBytes;
 /// } SEV_EVENT_INJECT_INFO, *PSEV_EVENT_INJECT_INFO;
 /// ```
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevEventInjectInfo(pub u64);
 
 /// A X64 selector register.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevSelector {
     pub selector: u16,
     pub attrib: u16,
@@ -39,7 +40,7 @@ pub struct SevSelector {
 
 /// A X64 XMM register.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevXmmRegister {
     low: u64,
     high: u64,
@@ -66,7 +67,7 @@ pub struct SevXmmRegister {
 /// };
 ///```
 #[bitfield_struct::bitfield(u64)]
-#[derive(AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevFeatures {
     pub snp: bool,
     pub vtom: bool,
@@ -104,12 +105,12 @@ pub struct SevFeatures {
 /// };
 ///```
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevVirtualInterruptControl(pub u64);
 
 /// SEV VMSA structure representing CPU state
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevVmsa {
     // Selector Info
     pub es: SevSelector,

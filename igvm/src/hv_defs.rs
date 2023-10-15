@@ -11,6 +11,7 @@ use core::fmt::Debug;
 use open_enum::open_enum;
 use zerocopy::AsBytes;
 use zerocopy::FromBytes;
+use zerocopy::FromZeroes;
 
 #[open_enum]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,7 +179,7 @@ impl From<Vtl> for u8 {
 
 /// An aligned u128 value.
 #[repr(C, align(16))]
-#[derive(Copy, Clone, PartialEq, Eq, AsBytes, FromBytes)]
+#[derive(Copy, Clone, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
 pub struct AlignedU128([u8; 16]);
 
 impl AlignedU128 {
@@ -235,7 +236,7 @@ impl From<AlignedU128> for u128 {
 
 /// A `HV_REGISTER_VALUE` that represents virtual processor registers.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes, FromZeroes)]
 pub struct HvRegisterValue(pub AlignedU128);
 
 impl HvRegisterValue {
@@ -299,7 +300,7 @@ impl From<u128> for HvRegisterValue {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes, FromZeroes)]
 pub struct HvX64TableRegister {
     pub pad: [u16; 3],
     pub limit: u16,
@@ -319,7 +320,7 @@ impl From<HvRegisterValue> for HvX64TableRegister {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes, FromZeroes)]
 pub struct HvX64SegmentRegister {
     pub base: u64,
     pub limit: u32,
@@ -348,7 +349,7 @@ macro_rules! registers {
         $(,)?
     }) => {
         #[open_enum]
-        #[derive(AsBytes, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u32)]
         pub enum $name {
             $($variant = $value,)*
