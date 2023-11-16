@@ -202,7 +202,7 @@ impl IgvmPlatformHeader {
 /// structure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IgvmInitializationHeader {
-    SnpPolicy {
+    GuestPolicy {
         policy: u64,
         compatibility_mask: u32,
     },
@@ -234,7 +234,7 @@ impl IgvmInitializationHeader {
     /// Get the in file variable header size of the given type.
     fn header_size(&self) -> usize {
         let additional = match self {
-            IgvmInitializationHeader::SnpPolicy { .. } => size_of::<IGVM_VHS_GUEST_POLICY>(),
+            IgvmInitializationHeader::GuestPolicy { .. } => size_of::<IGVM_VHS_GUEST_POLICY>(),
             IgvmInitializationHeader::RelocatableRegion { .. } => {
                 size_of::<IGVM_VHS_RELOCATABLE_REGION>()
             }
@@ -249,7 +249,7 @@ impl IgvmInitializationHeader {
     /// Checks if this header contains valid state.
     fn validate(&self) -> Result<(), BinaryHeaderError> {
         match self {
-            IgvmInitializationHeader::SnpPolicy {
+            IgvmInitializationHeader::GuestPolicy {
                 policy: _,
                 compatibility_mask: _,
             } => {
@@ -350,7 +350,7 @@ impl IgvmInitializationHeader {
                     return Err(BinaryHeaderError::ReservedNotZero);
                 }
 
-                IgvmInitializationHeader::SnpPolicy {
+                IgvmInitializationHeader::GuestPolicy {
                     policy,
                     compatibility_mask,
                 }
@@ -430,7 +430,7 @@ impl IgvmInitializationHeader {
         use IgvmInitializationHeader::*;
 
         match self {
-            SnpPolicy {
+            GuestPolicy {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
             RelocatableRegion {
@@ -447,7 +447,7 @@ impl IgvmInitializationHeader {
         self.validate()?;
 
         match self {
-            IgvmInitializationHeader::SnpPolicy {
+            IgvmInitializationHeader::GuestPolicy {
                 policy,
                 compatibility_mask,
             } => {
@@ -2949,7 +2949,7 @@ impl IgvmFile {
 
         for header in &mut other.initialization_headers {
             match header {
-                IgvmInitializationHeader::SnpPolicy {
+                IgvmInitializationHeader::GuestPolicy {
                     policy: _,
                     compatibility_mask,
                 } => fixup_mask(compatibility_mask),
