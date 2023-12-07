@@ -662,25 +662,9 @@ pub struct IgvmPageDataFlags {
     pub is_2mb_page: bool,
     /// This page data should be imported as unmeasured.
     pub unmeasured: bool,
-    /// This page data should be imported as assigned but host visible. The page
-    /// contents must be preserved, but are not part of the launch measurement.
-    ///
-    /// NOTE: This is technically unstable, but macro errors prevent us from
-    /// hiding this definition.
-    pub shared: bool,
     /// Reserved.
-    #[bits(29)]
+    #[bits(30)]
     pub reserved: u32,
-    // TODO: Macro errors prevent us from using the desired definition below.
-    // bitfield_struct issue?
-    // #[cfg(feature = "unstable")]
-    // #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
-    // pub shared: bool,
-    // /// Reserved.
-    // #[cfg_attr(feature = "unstable", bits(29))]
-    // pub reserved: u32,
-    // #[cfg_attr(not(feature = "unstable"), bits(30))]
-    // pub reserved: u32,
 }
 
 /// This structure describes a page of data that should be loaded into the guest
