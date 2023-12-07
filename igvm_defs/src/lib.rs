@@ -331,6 +331,13 @@ pub enum IgvmVariableHeaderType {
     ///
     /// IGVM specific extensions can be found in the [`dt`] module.
     IGVM_VHT_DEVICE_TREE = 0x312,
+    /// A parameter which holds a 4-byte u32 value defining the default state
+    /// of memory in the memory map.  The value is defined by the
+    /// IgvmMemoryState enumeration.  The loader will write the state to the
+    /// specified offset of the specified parameter area.  The parameter
+    /// location information is specified by a structure of type
+    /// [`IGVM_VHS_PARAMETER`].
+    IGVM_VHT_MEMORY_STATE_PARAMETER = 0x313,
 }
 
 /// The range of header types for platform structures.
@@ -626,6 +633,18 @@ pub struct IGVM_VHS_PARAMETER_AREA {
     /// insertion of parameters. If `file_offset` is zero, then the initial
     /// contents of the parameter page will be a page of zeroes.
     pub file_offset: u32,
+}
+
+/// Default memory state described by the IGVM_VHT_MEMORY_STATE_PARAMETER
+/// parameter.
+#[open_enum]
+#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum IgvmMemoryState {
+    /// Default state of memory is assigned to the guest (private)
+    ASSIGNED = 0x0,
+    /// Default state of memory is not assigned to the guest (shared)
+    UNASSIGNED = 0x1,
 }
 
 /// Page data types that describe the type of import for
