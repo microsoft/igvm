@@ -331,6 +331,13 @@ pub enum IgvmVariableHeaderType {
     ///
     /// IGVM specific extensions can be found in the [`dt`] module.
     IGVM_VHT_DEVICE_TREE = 0x312,
+    /// A parameter which holds a u32 bitfield value defining environmental
+    /// state of the VM.  The bitfield is defined by the `IgvmEnvironmentInfo`
+    /// structure.  The loader will write the state to the specified offset of
+    /// the specified parameter area.  The parameter location information is
+    /// specified by a structure of type [`IGVM_VHS_PARAMETER`].
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    IGVM_VHT_ENVIRONMENT_INFO_PARAMETER = 0x313,
 }
 
 /// The range of header types for platform structures.
@@ -626,6 +633,19 @@ pub struct IGVM_VHS_PARAMETER_AREA {
     /// insertion of parameters. If `file_offset` is zero, then the initial
     /// contents of the parameter page will be a page of zeroes.
     pub file_offset: u32,
+}
+
+/// Default memory state described by the IGVM_VHT_MEMORY_STATE_PARAMETER
+/// parameter.
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+#[bitfield(u32)]
+#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+pub struct IgvmEnvironmentInfo {
+    /// Default state of memory is not assigned to the guest (shared)
+    pub memory_is_shared: bool,
+    #[bits(31)]
+    pub reserved: u32,
 }
 
 /// Page data types that describe the type of import for
