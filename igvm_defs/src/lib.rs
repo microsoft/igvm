@@ -331,13 +331,6 @@ pub enum IgvmVariableHeaderType {
     ///
     /// IGVM specific extensions can be found in the [`dt`] module.
     IGVM_VHT_DEVICE_TREE = 0x312,
-    /// A parameter which holds a 4-byte u32 value defining the default state
-    /// of memory in the memory map.  The value is defined by the
-    /// IgvmMemoryState enumeration.  The loader will write the state to the
-    /// specified offset of the specified parameter area.  The parameter
-    /// location information is specified by a structure of type
-    /// [`IGVM_VHS_PARAMETER`].
-    IGVM_VHT_MEMORY_STATE_PARAMETER = 0x313,
 }
 
 /// The range of header types for platform structures.
@@ -635,18 +628,6 @@ pub struct IGVM_VHS_PARAMETER_AREA {
     pub file_offset: u32,
 }
 
-/// Default memory state described by the IGVM_VHT_MEMORY_STATE_PARAMETER
-/// parameter.
-#[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum IgvmMemoryState {
-    /// Default state of memory is assigned to the guest (private)
-    ASSIGNED = 0x0,
-    /// Default state of memory is not assigned to the guest (shared)
-    UNASSIGNED = 0x1,
-}
-
 /// Page data types that describe the type of import for
 /// [`IGVM_VHS_PAGE_DATA`].
 #[open_enum]
@@ -681,9 +662,25 @@ pub struct IgvmPageDataFlags {
     pub is_2mb_page: bool,
     /// This page data should be imported as unmeasured.
     pub unmeasured: bool,
+    /// This page data should be imported as assigned but host visible. The page
+    /// contents must be preserved, but are not part of the launch measurement.
+    ///
+    /// NOTE: This is technically unstable, but macro errors prevent us from
+    /// hiding this definition.
+    pub shared: bool,
     /// Reserved.
-    #[bits(30)]
+    #[bits(29)]
     pub reserved: u32,
+    // TODO: Macro errors prevent us from using the desired definition below.
+    // bitfield_struct issue?
+    // #[cfg(feature = "unstable")]
+    // #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    // pub shared: bool,
+    // /// Reserved.
+    // #[cfg_attr(feature = "unstable", bits(29))]
+    // pub reserved: u32,
+    // #[cfg_attr(not(feature = "unstable"), bits(30))]
+    // pub reserved: u32,
 }
 
 /// This structure describes a page of data that should be loaded into the guest
