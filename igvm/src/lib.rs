@@ -555,6 +555,7 @@ pub enum IgvmDirectiveHeader {
         initial_data: Vec<u8>,
     },
     VpCount(IGVM_VHS_PARAMETER),
+    EnvironmentInfo(IGVM_VHS_PARAMETER),
     Srat(IGVM_VHS_PARAMETER),
     Madt(IGVM_VHS_PARAMETER),
     Slit(IGVM_VHS_PARAMETER),
@@ -815,6 +816,7 @@ impl IgvmDirectiveHeader {
             IgvmDirectiveHeader::PageData { .. } => size_of::<IGVM_VHS_PAGE_DATA>(),
             IgvmDirectiveHeader::ParameterArea { .. } => size_of::<IGVM_VHS_PARAMETER_AREA>(),
             IgvmDirectiveHeader::VpCount(param) => size_of_val(param),
+            IgvmDirectiveHeader::EnvironmentInfo(param) => size_of_val(param),
             IgvmDirectiveHeader::Srat(param) => size_of_val(param),
             IgvmDirectiveHeader::Madt(param) => size_of_val(param),
             IgvmDirectiveHeader::Slit(param) => size_of_val(param),
@@ -928,6 +930,13 @@ impl IgvmDirectiveHeader {
                 append_header(
                     param,
                     IgvmVariableHeaderType::IGVM_VHT_VP_COUNT_PARAMETER,
+                    variable_headers,
+                );
+            }
+            IgvmDirectiveHeader::EnvironmentInfo(param) => {
+                append_header(
+                    param,
+                    IgvmVariableHeaderType::IGVM_VHT_ENVIRONMENT_INFO_PARAMETER,
                     variable_headers,
                 );
             }
@@ -1175,6 +1184,7 @@ impl IgvmDirectiveHeader {
             } => Some(*compatibility_mask),
             ParameterArea { .. } => None,
             VpCount(_) => None,
+            EnvironmentInfo(_) => None,
             Srat(_) => None,
             Madt(_) => None,
             Slit(_) => None,
@@ -1219,6 +1229,7 @@ impl IgvmDirectiveHeader {
             } => Some(compatibility_mask),
             ParameterArea { .. } => None,
             VpCount(_) => None,
+            EnvironmentInfo(_) => None,
             Srat(_) => None,
             Madt(_) => None,
             Slit(_) => None,
@@ -1347,6 +1358,7 @@ impl IgvmDirectiveHeader {
             // Parameter usage is validated by the IgvmFile functions, as more
             // info is needed than just this header.
             IgvmDirectiveHeader::VpCount(_)
+            | IgvmDirectiveHeader::EnvironmentInfo(_)
             | IgvmDirectiveHeader::Srat(_)
             | IgvmDirectiveHeader::Madt(_)
             | IgvmDirectiveHeader::Slit(_)
@@ -1636,6 +1648,11 @@ impl IgvmDirectiveHeader {
                 if length == size_of::<IGVM_VHS_PARAMETER>() =>
             {
                 IgvmDirectiveHeader::VpCount(read_header(&mut variable_headers)?)
+            }
+            IgvmVariableHeaderType::IGVM_VHT_ENVIRONMENT_INFO_PARAMETER
+                if length == size_of::<IGVM_VHS_PARAMETER>() =>
+            {
+                IgvmDirectiveHeader::EnvironmentInfo(read_header(&mut variable_headers)?)
             }
             IgvmVariableHeaderType::IGVM_VHT_SRAT if length == size_of::<IGVM_VHS_PARAMETER>() => {
                 IgvmDirectiveHeader::Srat(read_header(&mut variable_headers)?)
@@ -2248,6 +2265,7 @@ impl IgvmFile {
                     }
                 }
                 IgvmDirectiveHeader::VpCount(info)
+                | IgvmDirectiveHeader::EnvironmentInfo(info)
                 | IgvmDirectiveHeader::Srat(info)
                 | IgvmDirectiveHeader::Madt(info)
                 | IgvmDirectiveHeader::Slit(info)
@@ -3002,8 +3020,16 @@ impl IgvmFile {
                         }
                     }
                 }
-                VpCount(info) | Srat(info) | Madt(info) | Slit(info) | Pptt(info)
-                | MmioRanges(info) | MemoryMap(info) | CommandLine(info) | DeviceTree(info) => {
+                VpCount(info)
+                | EnvironmentInfo(info)
+                | Srat(info)
+                | Madt(info)
+                | Slit(info)
+                | Pptt(info)
+                | MmioRanges(info)
+                | MemoryMap(info)
+                | CommandLine(info)
+                | DeviceTree(info) => {
                     fixup_parameter_index(
                         &mut info.parameter_area_index,
                         &fixup_parameter_index_map,
@@ -3909,6 +3935,11 @@ mod tests {
     test_igvm_parameter!(test_vp_count(
         IgvmDirectiveHeader::VpCount,
         IgvmVariableHeaderType::IGVM_VHT_VP_COUNT_PARAMETER
+    ));
+
+    test_igvm_parameter!(test_environment_info(
+        IgvmDirectiveHeader::EnvironmentInfo,
+        IgvmVariableHeaderType::IGVM_VHT_ENVIRONMENT_INFO_PARAMETER
     ));
 
     test_igvm_parameter!(test_srat(
