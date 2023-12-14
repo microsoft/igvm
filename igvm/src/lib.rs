@@ -11,6 +11,9 @@
 //! semantics defined in the IGVM file format.
 
 #![deny(unsafe_code)]
+// Enables the `doc_cfg` feature when the `docsrs` configuration attribute
+// is defined.
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use hv_defs::HvArm64RegisterName;
 use hv_defs::HvX64RegisterName;
