@@ -12,6 +12,15 @@ repository = "https://github.com/microsoft/igvm"
 keywords = ["virtualization"]
 categories = ["virtualization", "parser-implementations"]
 
+[package.metadata.docs.rs]
+# Document all features
+all-features = true
+# Defines the configuration attribute `docsrs` which emits nicer docs via
+# nightly features.
+#
+# Run locally with RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 igvm_defs = { workspace = true, features = ["unstable"] }
 
