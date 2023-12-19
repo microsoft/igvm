@@ -19,6 +19,8 @@ FEATURES = "igvm-c"
 
 RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_DIR)/igvm_defs/src/lib.rs
 
+.PHONY: install
+
 all: include/igvm.h $(TARGET_PATH)/dump_igvm test
 
 $(TARGET_PATH)/libigvm.a:
@@ -51,3 +53,9 @@ clean:
 	$(CARGO) clean --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 	$(CARGO) clean --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 	rm -f include/igvm.h include/igvm_defs.h $(TARGET_PATH)/dump_igvm $(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
+
+install:
+	install -m 644 $(TARGET_PATH)/libigvm.a /usr/lib64
+	mkdir -p /usr/include/igvm
+	install -m 644 $(IGVM_DIR)/igvm_c/include/* /usr/include/igvm
+	install -m 644 $(IGVM_DIR)/igvm_c/igvm.pc /usr/lib64/pkgconfig

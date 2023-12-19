@@ -1,0 +1,13 @@
+prefix=/usr
+exec_prefix=${prefix}
+libdir=/usr/lib64
+sharedlibdir=${libdir}
+includedir=${prefix}/include
+
+Name: igvm
+Description: igvm library
+Version: 0.1.3
+
+Requires:
+Libs: -L${libdir} -L${sharedlibdir} -ligvm
+Cflags: -I${includedir}
