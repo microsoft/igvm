@@ -42,8 +42,8 @@ pub struct SevSelector {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevXmmRegister {
-    low: u64,
-    high: u64,
+    pub low: u64,
+    pub high: u64,
 }
 
 /// SEV feature information.
