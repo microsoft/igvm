@@ -331,6 +331,13 @@ pub enum IgvmVariableHeaderType {
     ///
     /// IGVM specific extensions can be found in the [`dt`] module.
     IGVM_VHT_DEVICE_TREE = 0x312,
+    /// A parameter which holds a u32 bitfield value defining environmental
+    /// state of the VM.  The bitfield is defined by the `IgvmEnvironmentInfo`
+    /// structure.  The loader will write the state to the specified offset of
+    /// the specified parameter area.  The parameter location information is
+    /// specified by a structure of type [`IGVM_VHS_PARAMETER`].
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    IGVM_VHT_ENVIRONMENT_INFO_PARAMETER = 0x313,
 }
 
 /// The range of header types for platform structures.
@@ -628,6 +635,19 @@ pub struct IGVM_VHS_PARAMETER_AREA {
     pub file_offset: u32,
 }
 
+/// Default memory state described by the IGVM_VHT_MEMORY_STATE_PARAMETER
+/// parameter.
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+#[bitfield(u32)]
+#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+pub struct IgvmEnvironmentInfo {
+    /// Default state of memory is not assigned to the guest (shared)
+    pub memory_is_shared: bool,
+    #[bits(31)]
+    pub reserved: u32,
+}
+
 /// Page data types that describe the type of import for
 /// [`IGVM_VHS_PAGE_DATA`].
 #[open_enum]
@@ -662,25 +682,9 @@ pub struct IgvmPageDataFlags {
     pub is_2mb_page: bool,
     /// This page data should be imported as unmeasured.
     pub unmeasured: bool,
-    /// This page data should be imported as assigned but host visible. The page
-    /// contents must be preserved, but are not part of the launch measurement.
-    ///
-    /// NOTE: This is technically unstable, but macro errors prevent us from
-    /// hiding this definition.
-    pub shared: bool,
     /// Reserved.
-    #[bits(29)]
+    #[bits(30)]
     pub reserved: u32,
-    // TODO: Macro errors prevent us from using the desired definition below.
-    // bitfield_struct issue?
-    // #[cfg(feature = "unstable")]
-    // #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
-    // pub shared: bool,
-    // /// Reserved.
-    // #[cfg_attr(feature = "unstable", bits(29))]
-    // pub reserved: u32,
-    // #[cfg_attr(not(feature = "unstable"), bits(30))]
-    // pub reserved: u32,
 }
 
 /// This structure describes a page of data that should be loaded into the guest

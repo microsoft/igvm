@@ -42,8 +42,8 @@ pub struct SevSelector {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct SevXmmRegister {
-    low: u64,
-    high: u64,
+    pub low: u64,
+    pub high: u64,
 }
 
 /// SEV feature information.
@@ -207,7 +207,7 @@ pub struct SevVmsa {
     // SYSENTER config registers
     pub sysenter_cs: u64,
     pub sysenter_esp: u64,
-    pub sysenter_eip: u64,
+    pub sysenter_epi: u64,
 
     // CR2
     pub cr2: u64,
