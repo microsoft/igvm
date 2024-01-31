@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
+//
 // Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License.
 
 //! A subset of the Microsoft hypervisor definitions used by the igvm crate.
 //!

@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
+//
 // Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License.
 
 //! This crate provides the definitions for the Independent Guest Virtual
 //! Machine (IGVM) file format.

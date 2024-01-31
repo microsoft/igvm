@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
+//
 // Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License.
 
 //! Trait to help parse binary types.
 

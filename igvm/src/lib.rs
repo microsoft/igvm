@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
+//
 // Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License.
 
 //! Provides a Rust implementation of an Independent Guest Virtual Machine
 //! (IGVM) file format parser, with the specification defined by the
