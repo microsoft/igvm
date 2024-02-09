@@ -34,6 +34,17 @@ jobs:
     - name: Run doc tests
       run: cargo test --no-fail-fast --doc --workspace
 
+  c_api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install cbindgen
+        run: cargo install cbindgen
+      - name: Install build dependencies
+        run: sudo apt-get install -y libcunit1-dev
+      - name: Build and test
+        run: make -f igvm_c/Makefile
+    
   miri:
     name: "Miri"
     strategy:

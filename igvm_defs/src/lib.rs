@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: MIT
+//
 // Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License.
 
 //! This crate provides the definitions for the Independent Guest Virtual
 //! Machine (IGVM) file format.
@@ -109,6 +110,7 @@ use zerocopy::FromZeroes;
 
 pub mod dt;
 
+/// cbindgen:ignore
 #[allow(non_camel_case_types)]
 mod packed_nums {
     pub type u32_le = zerocopy::U32<zerocopy::LittleEndian>;
