@@ -1265,8 +1265,37 @@ impl IgvmDirectiveHeader {
                     variable_headers,
                 );
             }
-            IgvmDirectiveHeader::VbsMeasurement { .. } => {
-                todo!("append VBS measurement")
+            IgvmDirectiveHeader::VbsMeasurement {
+                compatibility_mask,
+                version,
+                product_id,
+                module_id,
+                security_version,
+                policy_flags,
+                boot_digest_algo,
+                signing_algo,
+                boot_measurement_digest,
+                signature,
+                public_key,
+            } => {
+                let vbs_measurement = IGVM_VHS_VBS_MEASUREMENT {
+                    compatibility_mask: *compatibility_mask,
+                    version: *version,
+                    product_id: *product_id,
+                    module_id: *module_id,
+                    security_version: *security_version,
+                    policy_flags: *policy_flags,
+                    boot_digest_algo: *boot_digest_algo,
+                    signing_algo: *signing_algo,
+                    boot_measurement_digest: **boot_measurement_digest,
+                    signature: **signature,
+                    public_key: **public_key,
+                };
+                append_header(
+                    &vbs_measurement,
+                    IgvmVariableHeaderType::IGVM_VHT_VBS_MEASUREMENT,
+                    variable_headers,
+                )
             }
         }
 
