@@ -1055,17 +1055,6 @@ impl Default for MemoryMapEntryType {
     }
 }
 
-/// Flags associated with a memory map entry.
-#[bitfield(u16)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
-pub struct MemoryMapEntryFlags {
-    /// Memory is in the shared state, and an explicit call must be made to
-    /// change it to the private state before it can be accepted and used.
-    pub is_shared: bool,
-    #[bits(15)]
-    pub reserved: u16,
-}
-
 /// The structure deposited by the loader for memory map entries for
 /// [`IgvmVariableHeaderType::IGVM_VHT_MEMORY_MAP`] that describe memory
 /// available to the guest.
@@ -1082,7 +1071,7 @@ pub struct IGVM_VHS_MEMORY_MAP_ENTRY {
     /// The type of memory this entry represents.
     pub entry_type: MemoryMapEntryType,
     /// Flags about this memory entry.
-    pub flags: MemoryMapEntryFlags,
+    pub flags: u16,
     /// Reserved.
     pub reserved: u32,
 }
