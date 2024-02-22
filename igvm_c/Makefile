@@ -13,6 +13,8 @@ else
 TARGET_PATH="$(IGVM_DIR)/target_c/debug"
 endif
 
+PREFIX ?= /usr
+
 CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/target_c cargo
 
 FEATURES = "igvm-c"
@@ -54,8 +56,12 @@ clean:
 	$(CARGO) clean --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 	rm -f include/igvm.h include/igvm_defs.h $(TARGET_PATH)/dump_igvm $(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
 
-install:
-	install -m 644 $(TARGET_PATH)/libigvm.a /usr/lib64
-	mkdir -p /usr/include/igvm
-	install -m 644 $(IGVM_DIR)/igvm_c/include/* /usr/include/igvm
-	install -m 644 $(IGVM_DIR)/igvm_c/igvm.pc /usr/lib64/pkgconfig
+$(TARGET_PATH)/igvm.pc:
+	sed s:prefix=.\*:prefix=$(PREFIX): $(IGVM_DIR)/igvm_c/igvm.pc > $(TARGET_PATH)/igvm.pc
+
+install: $(TARGET_PATH)/igvm.pc
+	mkdir -p $(PREFIX)/include/igvm
+	mkdir -p $(PREFIX)/lib64/pkgconfig
+	install -m 644 $(TARGET_PATH)/libigvm.a $(PREFIX)/lib64
+	install -m 644 $(IGVM_DIR)/igvm_c/include/* $(PREFIX)/include/igvm
+	install -m 644 $(TARGET_PATH)/igvm.pc $(PREFIX)/lib64/pkgconfig

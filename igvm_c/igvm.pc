@@ -1,6 +1,6 @@
 prefix=/usr
 exec_prefix=${prefix}
-libdir=/usr/lib64
+libdir=${prefix}/lib64
 sharedlibdir=${libdir}
 includedir=${prefix}/include
 
