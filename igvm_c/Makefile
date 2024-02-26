@@ -39,10 +39,10 @@ include/igvm.h: $(RUST_SOURCE)
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm_defs.toml $(IGVM_DIR)/igvm_defs -o "$(API_DIR)/include/igvm_defs.h"
 
 $(TARGET_PATH)/dump_igvm: $(API_DIR)/include/igvm.h $(API_DIR)/sample/dump_igvm.c $(TARGET_PATH)/libigvm.a
-	cc -g3 -O0 -I $(API_DIR) -L $(TARGET_PATH) -o $@ $^ -ligvm -lcunit
+	cc -g3 -O0 -I $(API_DIR) -L $(TARGET_PATH) -o $@ $^ -ligvm -ldl -pthread -lm -lutil -lrt
 
 $(TARGET_PATH)/igvm_test: $(API_DIR)/include/igvm.h $(API_DIR)/tests/igvm_test.c $(TARGET_PATH)/libigvm.a
-	cc -g3 -O0 -I $(API_DIR) -L $(TARGET_PATH) -o $@ $^ -ligvm -lcunit
+	cc -g3 -O0 -I $(API_DIR) -L $(TARGET_PATH) -o $@ $^ -ligvm -lcunit -ldl -pthread -lm -lutil -lrt
 
 $(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data
 	$(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
