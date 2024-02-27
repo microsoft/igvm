@@ -208,7 +208,7 @@ pub struct SevVmsa {
     // SYSENTER config registers
     pub sysenter_cs: u64,
     pub sysenter_esp: u64,
-    pub sysenter_epi: u64,
+    pub sysenter_eip: u64,
 
     // CR2
     pub cr2: u64,
