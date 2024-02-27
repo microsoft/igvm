@@ -45,6 +45,21 @@ exported C functions.
 The file `igvm.h` includes `igvm_defs.h` so only this file needs to be included
 in C projects source files.
 
+## Installing
+Once built, the library can be installed with:
+
+```bash
+make -f Makefile install
+```
+
+By default, the library will be installed into `/usr` which will require root
+privileges. Alternatively, the library can be installed in a different location
+by setting `PREFIX`:
+
+```bash
+PREFIX=/path/to/installation make -f Makefile install
+```
+
 ## Sample application
 The C API build generates a test application named `dump_igvm`. This application
 can take the path of a binary IGVM file as a parameter and will use the C API to
