@@ -684,9 +684,25 @@ pub struct IgvmPageDataFlags {
     pub is_2mb_page: bool,
     /// This page data should be imported as unmeasured.
     pub unmeasured: bool,
+    /// This page data should be imported as assigned but host visible. The page
+    /// contents must be preserved, but are not part of the launch measurement.
+    ///
+    /// NOTE: This is technically unstable, but macro errors prevent us from
+    /// hiding this definition.
+    pub shared: bool,
     /// Reserved.
-    #[bits(30)]
+    #[bits(29)]
     pub reserved: u32,
+    // TODO: Macro errors prevent us from using the desired definition below.
+    // bitfield_struct issue?
+    // #[cfg(feature = "unstable")]
+    // #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    // pub shared: bool,
+    // /// Reserved.
+    // #[cfg_attr(feature = "unstable", bits(29))]
+    // pub reserved: u32,
+    // #[cfg_attr(not(feature = "unstable"), bits(30))]
+    // pub reserved: u32,
 }
 
 /// This structure describes a page of data that should be loaded into the guest
@@ -1039,17 +1055,6 @@ impl Default for MemoryMapEntryType {
     }
 }
 
-/// Flags associated with a memory map entry.
-#[bitfield(u16)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
-pub struct MemoryMapEntryFlags {
-    /// Memory is in the shared state, and an explicit call must be made to
-    /// change it to the private state before it can be accepted and used.
-    pub is_shared: bool,
-    #[bits(15)]
-    pub reserved: u16,
-}
-
 /// The structure deposited by the loader for memory map entries for
 /// [`IgvmVariableHeaderType::IGVM_VHT_MEMORY_MAP`] that describe memory
 /// available to the guest.
@@ -1066,7 +1071,7 @@ pub struct IGVM_VHS_MEMORY_MAP_ENTRY {
     /// The type of memory this entry represents.
     pub entry_type: MemoryMapEntryType,
     /// Flags about this memory entry.
-    pub flags: MemoryMapEntryFlags,
+    pub flags: u16,
     /// Reserved.
     pub reserved: u32,
 }
