@@ -9,8 +9,8 @@ members = [
 ]
 
 [workspace.dependencies]
-igvm_defs = { path = "igvm_defs", version = "0.1.5" }
-igvm = { path = "igvm", version = "0.1.5" }
+igvm_defs = { path = "igvm_defs", version = "0.1.6" }
+igvm = { path = "igvm", version = "0.1.6" }
 
 anyhow = "1.0"
 bitfield-struct = "0.5"
