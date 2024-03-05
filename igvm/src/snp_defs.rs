@@ -10,7 +10,7 @@ use zerocopy::FromZeroes;
 
 /// Virtual Event Injection
 /// Defined by the following union in C:
-/// ```ignore
+/// ```C
 /// typedef union _SEV_EVENT_INJECT_INFO
 /// {
 ///     UINT64 AsUINT64;
@@ -49,7 +49,7 @@ pub struct SevXmmRegister {
 
 /// SEV feature information.
 /// Defined by the following union in C:
-///```ignore
+///```C
 /// union
 /// {
 ///     UINT64  SevFeatures;
@@ -84,7 +84,7 @@ pub struct SevFeatures {
 
 /// SEV Virtual interrupt control
 /// Defined by the following union in C:
-///```ignore
+///```C
 /// union
 /// {
 ///     UINT64  VIntrCtrl;
