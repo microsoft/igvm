@@ -31,7 +31,7 @@ igvm_defs = { workspace = true, features = ["unstable"] }
 bitfield-struct.workspace = true
 range_map_vec.workspace = true
 crc32fast.workspace = true
-hex.workspace = true
+hex = { workspace = true, features = ["alloc"] }
 open-enum.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
