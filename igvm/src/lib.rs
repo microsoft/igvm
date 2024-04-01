@@ -633,6 +633,11 @@ pub enum IgvmDirectiveHeader {
         vp_index: u16,
         vmsa: Box<SevVmsa>,
     },
+    X64NativeVpContext {
+        compatibility_mask: u32,
+        vp_index: u16,
+        context: Box<IgvmNativeVpContextX64>,
+    },
     /// Represents VP context for the BSP only.
     X64VbsVpContext {
         vtl: Vtl,
@@ -884,6 +889,7 @@ impl IgvmDirectiveHeader {
             IgvmDirectiveHeader::DeviceTree(param) => size_of_val(param),
             IgvmDirectiveHeader::RequiredMemory { .. } => size_of::<IGVM_VHS_REQUIRED_MEMORY>(),
             IgvmDirectiveHeader::SnpVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
+            IgvmDirectiveHeader::X64NativeVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::X64VbsVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::AArch64VbsVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::ParameterInsert(param) => size_of_val(param),
@@ -917,6 +923,9 @@ impl IgvmDirectiveHeader {
                 IgvmVariableHeaderType::IGVM_VHT_REQUIRED_MEMORY
             }
             IgvmDirectiveHeader::SnpVpContext { .. } => IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+            IgvmDirectiveHeader::X64NativeVpContext { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
+            }
             IgvmDirectiveHeader::X64VbsVpContext { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
             }
@@ -1148,6 +1157,31 @@ impl IgvmDirectiveHeader {
                     variable_headers,
                 );
             }
+            IgvmDirectiveHeader::X64NativeVpContext {
+                compatibility_mask,
+                vp_index,
+                context,
+            } => {
+                // Pad file data to 4K.
+                let align_up_iter =
+                    std::iter::repeat(&0u8).take(PAGE_SIZE_4K as usize - context.as_bytes().len());
+                file_data.extend_from_slice(context.as_bytes());
+                file_data.extend(align_up_iter);
+
+                let info = IGVM_VHS_VP_CONTEXT {
+                    gpa: 0.into(),
+                    compatibility_mask: *compatibility_mask,
+                    file_offset: file_data_offset,
+                    vp_index: *vp_index,
+                    reserved: 0,
+                };
+
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+                    variable_headers,
+                );
+            }
             IgvmDirectiveHeader::X64VbsVpContext {
                 vtl,
                 registers,
@@ -1327,6 +1361,9 @@ impl IgvmDirectiveHeader {
             SnpVpContext {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            X64NativeVpContext {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
             X64VbsVpContext {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
@@ -1370,6 +1407,9 @@ impl IgvmDirectiveHeader {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
             SnpVpContext {
+                compatibility_mask, ..
+            } => Some(compatibility_mask),
+            X64NativeVpContext {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
             X64VbsVpContext {
@@ -1519,6 +1559,11 @@ impl IgvmDirectiveHeader {
                     return Err(BinaryHeaderError::UnalignedAddress(*gpa));
                 }
             }
+            IgvmDirectiveHeader::X64NativeVpContext {
+                compatibility_mask: _,
+                vp_index: _,
+                context: _,
+            } => {}
             IgvmDirectiveHeader::X64VbsVpContext {
                 vtl: _,
                 registers: _,
@@ -2412,6 +2457,18 @@ impl IgvmFile {
                     // TODO: Validate vp info for SNP. Need max enabled VTL for given platform as that's the
                     //       which VTL this vmsa refers to.
                 }
+                IgvmDirectiveHeader::X64NativeVpContext {
+                    compatibility_mask: _,
+                    context: _,
+                    vp_index: _,
+                } => {
+                    if revision.arch() != Arch::X64 {
+                        return Err(Error::InvalidHeaderArch {
+                            arch: revision.arch(),
+                            header_type: "X64VbsVpContext".into(),
+                        });
+                    }
+                }
                 IgvmDirectiveHeader::X64VbsVpContext {
                     vtl,
                     registers: _,
@@ -3121,6 +3178,7 @@ impl IgvmFile {
                 RequiredMemory { .. }
                 | PageData { .. }
                 | SnpVpContext { .. }
+                | X64NativeVpContext { .. }
                 | ErrorRange { .. }
                 | SnpIdBlock { .. }
                 | VbsMeasurement { .. }
