@@ -367,8 +367,8 @@ pub struct IGVM_VHS_VARIABLE_HEADER {
 #[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum IgvmPlatformType {
-    /// Invalid platform type.
-    INVALID = 0x00,
+    /// Native platform type without isolation.
+    NATIVE = 0x00,
     /// Platform type of Hyper-V's which supports VSM isolation.
     VSM_ISOLATION = 0x01,
     /// AMD SEV-SNP.
@@ -379,10 +379,12 @@ pub enum IgvmPlatformType {
 
 impl Default for IgvmPlatformType {
     fn default() -> Self {
-        IgvmPlatformType::INVALID
+        IgvmPlatformType::NATIVE
     }
 }
 
+/// Platform version for [`IgvmPlatformType::NATIVE`].
+pub const NATIVE_VERSION: u16 = 0x1;
 /// Platform version for [`IgvmPlatformType::VSM_ISOLATION`].
 pub const IGVM_VSM_ISOLATION_PLATFORM_VERSION: u16 = 0x1;
 /// Platform version for [`IgvmPlatformType::SEV_SNP`].
@@ -791,9 +793,7 @@ pub struct IGVM_VHS_PARAMETER {
 /// This structure defines architecture specific that should be loaded into the
 /// guest address space to represent an initial VP context.
 ///
-/// If a file contains more than one [`IGVM_VHS_VP_CONTEXT`] entry, then each
-/// VpIndex less than `n` must be used exactly once, where `n` is the number of
-/// [`IGVM_VHS_VP_CONTEXT`] entries in the file.
+/// A file can contain only a single [`IGVM_VHS_VP_CONTEXT`] entry.
 ///
 /// For architectures such as Intel TDX that have an architectural reset state,
 /// this structure is invalid.
@@ -805,8 +805,8 @@ pub struct IGVM_VHS_VP_CONTEXT {
     /// The guest physical address where the VP context data should be
     /// deposited, if required.
     ///
-    /// For VBS, this must be zero. There is no VP context data to be deposited
-    /// into the guest address space.
+    /// For NAIVE or VBS, this must be zero. There is no VP context data to be
+    /// deposited into the guest address space.
     ///
     /// For AMD SEV-SNP, this is the GPA to place the VMSA structure at.
     pub gpa: u64_le,
@@ -845,6 +845,95 @@ pub struct IGVM_VHS_ERROR_RANGE {
     pub compatibility_mask: u32,
     /// The size of this range in bytes. It must be page aligned.
     pub size_bytes: u32,
+}
+
+/// Format of [`IGVM_VHS_VP_CONTEXT`] file data for a native x86-64 image.
+/// Registers not specified here are initialized to their architectural
+/// reset values.
+///
+/// Only supported in version 2 and later files.
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+#[repr(C)]
+#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+pub struct IgvmNativeVpContextX64 {
+    /// RAX register.
+    pub rax: u64,
+    /// RCX register.
+    pub rcx: u64,
+    /// RDX register.
+    pub rdx: u64,
+    /// RBX register.
+    pub rbx: u64,
+    /// Stack pointer.
+    pub rsp: u64,
+    /// RBP register.
+    pub rbp: u64,
+    /// RSI register.
+    pub rsi: u64,
+    /// RDI register.
+    pub rdi: u64,
+    /// R8 register.
+    pub r8: u64,
+    /// R9 register.
+    pub r9: u64,
+    /// R10 register.
+    pub r10: u64,
+    /// R11 register.
+    pub r11: u64,
+    /// R12 register.
+    pub r12: u64,
+    /// R13 register.
+    pub r13: u64,
+    /// R14 register.
+    pub r14: u64,
+    /// R15 register.
+    pub r15: u64,
+    /// Instruction pointer.
+    pub rip: u64,
+    /// RFLAGS register.
+    pub rflags: u64,
+    /// IDT base address.
+    pub idtr_base: u64,
+    /// IDT size.
+    pub idtr_size: u16,
+    /// Reserved.
+    pub reserved: [u16; 2],
+    /// GDT size.
+    pub gdtr_size: u16,
+    /// GDT base.
+    pub gdtr_base: u64,
+    /// Four code segment attributes are defined.
+    ///
+    /// Code selector value.
+    pub code_selector: u16,
+    /// Code segment attributes.  Bits 11:8 must be zero.
+    pub code_attributes: u16,
+    /// Code segment base.
+    pub code_base: u32,
+    /// Code segment limit.
+    pub code_limit: u32,
+    /// Four data segment attributes are defined.  These attributes are applied
+    /// to all non-code segments (i.e. `es`, `ds`, `ss`, `fs`, and `gs`).
+    ///
+    /// Data selector value.
+    pub data_selector: u16,
+    /// Data segment attributes.  Bits 11:8 must be zero.
+    pub data_attributes: u16,
+    /// Data segment base.
+    pub data_base: u32,
+    /// Data segment limit.
+    pub data_limit: u32,
+    /// Base address of the GS segment.
+    pub gs_base: u64,
+    /// CR0 register.
+    pub cr0: u64,
+    /// CR3 register.
+    pub cr3: u64,
+    /// CR4 register.
+    pub cr4: u64,
+    /// EFER register.
+    pub efer: u64,
 }
 
 /// Format of VBS [`IGVM_VHS_VP_CONTEXT`] file data.
