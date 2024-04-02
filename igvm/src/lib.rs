@@ -52,7 +52,7 @@ type u64_le = zerocopy::U64<zerocopy::LittleEndian>;
 /// The guest isolation type of the platform.
 #[derive(Debug, PartialEq, Eq)]
 pub enum IsolationType {
-    /// This guest is not isolated.
+    /// This guest is not isolated, and is the native type [`igvm_defs::IgvmPlatformType::NATIVE`].  
     NotIsolated,
     /// This guest is isolated with VBS.
     Vbs,
