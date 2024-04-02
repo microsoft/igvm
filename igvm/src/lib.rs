@@ -52,6 +52,8 @@ type u64_le = zerocopy::U64<zerocopy::LittleEndian>;
 /// The guest isolation type of the platform.
 #[derive(Debug, PartialEq, Eq)]
 pub enum IsolationType {
+    /// This guest is not isolated, and is the native type [`igvm_defs::IgvmPlatformType::NATIVE`].  
+    NotIsolated,
     /// This guest is isolated with VBS.
     Vbs,
     /// This guest is isolated with SNP (physical or emulated).
@@ -63,6 +65,7 @@ pub enum IsolationType {
 impl From<IsolationType> for igvm_defs::IgvmPlatformType {
     fn from(typ: IsolationType) -> Self {
         match typ {
+            IsolationType::NotIsolated => IgvmPlatformType::NATIVE,
             IsolationType::Vbs => IgvmPlatformType::VSM_ISOLATION,
             IsolationType::Snp => IgvmPlatformType::SEV_SNP,
             IsolationType::Tdx => IgvmPlatformType::TDX,
@@ -162,6 +165,14 @@ impl IgvmPlatformHeader {
 
                 // Platform type must be valid.
                 match info.platform_type {
+                    IgvmPlatformType::NATIVE => {
+                        if info.platform_version != IGVM_NATIVE_PLATFORM_VERSION {
+                            return Err(BinaryHeaderError::InvalidPlatformVersion);
+                        }
+                        if info.shared_gpa_boundary != 0 {
+                            return Err(BinaryHeaderError::InvalidSharedGpaBoundary);
+                        }
+                    }
                     IgvmPlatformType::VSM_ISOLATION => {
                         if info.platform_version != IGVM_VSM_ISOLATION_PLATFORM_VERSION {
                             return Err(BinaryHeaderError::InvalidPlatformVersion);
@@ -843,6 +854,8 @@ pub enum BinaryHeaderError {
     InvalidVpContextPlatformType,
     #[error("invalid vmsa")]
     InvalidVmsa,
+    #[error("invalid VP context")]
+    InvalidContext,
     #[error("invalid compatibility mask")]
     InvalidCompatibilityMask,
     #[error("invalid vtl")]
@@ -1787,6 +1800,34 @@ impl IgvmDirectiveHeader {
                             vmsa,
                         }
                     }
+                    Some(IgvmPlatformType::NATIVE) => {
+                        // Read the context which is stored as 4K file data.
+                        let start = (header.file_offset - file_data_start) as usize;
+                        if file_data.len() < start {
+                            return Err(BinaryHeaderError::InvalidDataSize);
+                        }
+
+                        let data = file_data
+                            .get(start..)
+                            .and_then(|x| x.get(..PAGE_SIZE_4K as usize))
+                            .ok_or(BinaryHeaderError::InvalidDataSize)?;
+
+                        // Copy the context bytes into the context structure,
+                        // and validate the remaining bytes are 0.
+                        let mut context = IgvmNativeVpContextX64::new_box_zeroed();
+                        let (context_slice, remaining) =
+                            data.split_at(size_of::<IgvmNativeVpContextX64>());
+                        context.as_bytes_mut().copy_from_slice(context_slice);
+                        if remaining.iter().any(|b| *b != 0) {
+                            return Err(BinaryHeaderError::InvalidContext);
+                        }
+
+                        IgvmDirectiveHeader::X64NativeVpContext {
+                            compatibility_mask: header.compatibility_mask,
+                            vp_index: header.vp_index,
+                            context,
+                        }
+                    }
                     _ => {
                         // Unsupported compatibility mask or isolation type
                         return Err(BinaryHeaderError::InvalidVpContextPlatformType);
@@ -2244,7 +2285,9 @@ impl IgvmFile {
                 IgvmPlatformHeader::SupportedPlatform(info) => {
                     match info.platform_type {
                         IgvmPlatformType::VSM_ISOLATION => {}
-                        IgvmPlatformType::SEV_SNP | IgvmPlatformType::TDX => {
+                        IgvmPlatformType::SEV_SNP
+                        | IgvmPlatformType::TDX
+                        | IgvmPlatformType::NATIVE => {
                             if revision.arch() != Arch::X64 {
                                 return Err(Error::PlatformArchUnsupported {
                                     arch: revision.arch(),
