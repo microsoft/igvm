@@ -384,7 +384,7 @@ impl Default for IgvmPlatformType {
 }
 
 /// Platform version for [`IgvmPlatformType::NATIVE`].
-pub const NATIVE_VERSION: u16 = 0x1;
+pub const IGVM_NATIVE_PLATFORM_VERSION: u16 = 0x1;
 /// Platform version for [`IgvmPlatformType::VSM_ISOLATION`].
 pub const IGVM_VSM_ISOLATION_PLATFORM_VERSION: u16 = 0x1;
 /// Platform version for [`IgvmPlatformType::SEV_SNP`].
