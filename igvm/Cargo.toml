@@ -3,7 +3,7 @@
 
 [package]
 name = "igvm"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2021"
 description = "The igvm crate is an implementation of a parser for the Independent Guest Virtual Machine (IGVM) file format."
 license = "MIT"
@@ -31,7 +31,7 @@ igvm_defs = { workspace = true, features = ["unstable"] }
 bitfield-struct.workspace = true
 range_map_vec.workspace = true
 crc32fast.workspace = true
-hex.workspace = true
+hex = { workspace = true, features = ["alloc"] }
 open-enum.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
