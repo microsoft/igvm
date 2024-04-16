@@ -66,3 +66,5 @@ install: $(TARGET_PATH)/igvm.pc
 	install -m 644 $(TARGET_PATH)/libigvm.a $(DESTDIR)/$(PREFIX)/lib64
 	install -m 644 $(IGVM_DIR)/igvm_c/include/* $(DESTDIR)/$(PREFIX)/include/igvm
 	install -m 644 $(TARGET_PATH)/igvm.pc $(DESTDIR)/$(PREFIX)/lib64/pkgconfig
+	mkdir -p $(DESTDIR)/$(PREFIX)/bin/
+	install -m 755 $(TARGET_PATH)/dump_igvm $(DESTDIR)/$(PREFIX)/bin/
