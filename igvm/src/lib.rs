@@ -52,7 +52,7 @@ type u64_le = zerocopy::U64<zerocopy::LittleEndian>;
 /// The guest isolation type of the platform.
 #[derive(Debug, PartialEq, Eq)]
 pub enum IsolationType {
-    /// This guest is not isolated, and is the native type [`igvm_defs::IgvmPlatformType::NATIVE`].  
+    /// This guest is not isolated, and is the native type [`igvm_defs::IgvmPlatformType::NATIVE`].
     NotIsolated,
     /// This guest is isolated with VBS.
     Vbs,
@@ -120,6 +120,47 @@ fn append_header<T: AsBytes>(
 
     debug_assert!(variable_headers.len() % 8 == 0);
 }
+
+pub struct FileDataSerialize {
+    file_offset: usize,
+    file_data: Vec<u8>,
+    file_data_map: HashMap<Vec<u8>, u32>,
+}
+
+impl FileDataSerialize {
+    pub fn new(offset: usize) -> Self {
+        Self {
+            file_offset: offset,
+            file_data: Vec::new(),
+            file_data_map: HashMap::new(),
+        }
+    }
+
+    pub fn take(self) -> Vec<u8> {
+        self.file_data
+    }
+
+    pub fn write_file_data(&mut self, file_data: &[u8]) -> u32 {
+        if let Some(offset) = self.file_data_map.get(file_data) {
+            return *offset;
+        }
+
+        let offset = self.file_offset;
+        self.file_data.extend_from_slice(file_data);
+        let offset: u32 = offset.try_into().expect("file data offset must fit in u32");
+        self.file_data_map.insert(file_data.to_vec(), offset);
+        self.file_offset += file_data.len();
+        offset
+    }
+}
+
+// impl WriteFileData for Vec<u8> {
+//     fn write_file_data(&mut self, file_data: &[u8]) -> u32 {
+//         let offset = self.len();
+//         self.extend_from_slice(file_data);
+//         offset.try_into().expect("file data offset must fit in u32")
+//     }
+// }
 
 /// Represents a structure in an IGVM variable header section, platform
 /// structure.
@@ -965,9 +1006,8 @@ impl IgvmDirectiveHeader {
     /// in the variable header if this data has a file data component.
     pub fn write_binary_header(
         &self,
-        file_data_offset: u32,
         variable_headers: &mut Vec<u8>,
-        file_data: &mut Vec<u8>,
+        file_data: &mut FileDataSerialize,
     ) -> Result<(), BinaryHeaderError> {
         // Only serialize this header if valid.
         self.validate()?;
@@ -992,10 +1032,8 @@ impl IgvmDirectiveHeader {
 
                     let align_up_iter =
                         std::iter::repeat(&0u8).take(PAGE_SIZE_4K as usize - data.len());
-                    file_data.extend_from_slice(data);
-                    file_data.extend(align_up_iter);
-
-                    file_data_offset
+                    let data: Vec<u8> = data.iter().chain(align_up_iter).copied().collect();
+                    file_data.write_file_data(&data)
                 };
 
                 let info = IGVM_VHS_PAGE_DATA {
@@ -1029,10 +1067,8 @@ impl IgvmDirectiveHeader {
 
                     let align_up_iter = std::iter::repeat(&0u8)
                         .take(*number_of_bytes as usize - initial_data.len());
-                    file_data.extend_from_slice(initial_data);
-                    file_data.extend(align_up_iter);
-
-                    file_data_offset
+                    let data: Vec<u8> = initial_data.iter().chain(align_up_iter).copied().collect();
+                    file_data.write_file_data(&data)
                 };
 
                 let info = IGVM_VHS_PARAMETER_AREA {
@@ -1153,13 +1189,18 @@ impl IgvmDirectiveHeader {
                 // Pad file data to 4K.
                 let align_up_iter =
                     std::iter::repeat(&0u8).take(PAGE_SIZE_4K as usize - vmsa.as_bytes().len());
-                file_data.extend_from_slice(vmsa.as_bytes());
-                file_data.extend(align_up_iter);
+                let data: Vec<u8> = vmsa
+                    .as_bytes()
+                    .iter()
+                    .chain(align_up_iter)
+                    .copied()
+                    .collect();
+                let file_offset = file_data.write_file_data(&data);
 
                 let info = IGVM_VHS_VP_CONTEXT {
                     gpa: u64_le::new(*gpa),
                     compatibility_mask: *compatibility_mask,
-                    file_offset: file_data_offset,
+                    file_offset,
                     vp_index: *vp_index,
                     reserved: 0,
                 };
@@ -1178,13 +1219,18 @@ impl IgvmDirectiveHeader {
                 // Pad file data to 4K.
                 let align_up_iter =
                     std::iter::repeat(&0u8).take(PAGE_SIZE_4K as usize - context.as_bytes().len());
-                file_data.extend_from_slice(context.as_bytes());
-                file_data.extend(align_up_iter);
+                let data: Vec<u8> = context
+                    .as_bytes()
+                    .iter()
+                    .chain(align_up_iter)
+                    .copied()
+                    .collect();
+                let file_offset = file_data.write_file_data(&data);
 
                 let info = IGVM_VHS_VP_CONTEXT {
                     gpa: 0.into(),
                     compatibility_mask: *compatibility_mask,
-                    file_offset: file_data_offset,
+                    file_offset,
                     vp_index: *vp_index,
                     reserved: 0,
                 };
@@ -1200,27 +1246,30 @@ impl IgvmDirectiveHeader {
                 registers,
                 compatibility_mask,
             } => {
-                let info = IGVM_VHS_VP_CONTEXT {
-                    gpa: 0.into(),
-                    compatibility_mask: *compatibility_mask,
-                    file_offset: file_data_offset,
-                    vp_index: 0,
-                    reserved: 0,
-                };
-
                 // Build the serialized file data.
+                let mut data = Vec::new();
                 let header = VbsVpContextHeader {
                     register_count: registers
                         .len()
                         .try_into()
                         .expect("reg count must fit in u32"),
                 };
-                file_data.extend_from_slice(header.as_bytes());
+                data.extend_from_slice(header.as_bytes());
 
                 for register in registers {
                     let vbs_reg = register.into_vbs_vp_context_reg(*vtl);
-                    file_data.extend_from_slice(vbs_reg.as_bytes());
+                    data.extend_from_slice(vbs_reg.as_bytes());
                 }
+
+                let file_offset = file_data.write_file_data(&data);
+
+                let info = IGVM_VHS_VP_CONTEXT {
+                    gpa: 0.into(),
+                    compatibility_mask: *compatibility_mask,
+                    file_offset,
+                    vp_index: 0,
+                    reserved: 0,
+                };
 
                 append_header(
                     &info,
@@ -1233,13 +1282,7 @@ impl IgvmDirectiveHeader {
                 registers,
                 compatibility_mask,
             } => {
-                let info = IGVM_VHS_VP_CONTEXT {
-                    gpa: 0.into(),
-                    compatibility_mask: *compatibility_mask,
-                    file_offset: file_data_offset,
-                    vp_index: 0,
-                    reserved: 0,
-                };
+                let mut data = Vec::new();
 
                 // Build the serialized file data.
                 let header = VbsVpContextHeader {
@@ -1248,12 +1291,22 @@ impl IgvmDirectiveHeader {
                         .try_into()
                         .expect("reg count must fit in u32"),
                 };
-                file_data.extend_from_slice(header.as_bytes());
+                data.extend_from_slice(header.as_bytes());
 
                 for register in registers {
                     let vbs_reg = register.into_vbs_vp_context_reg(*vtl);
-                    file_data.extend_from_slice(vbs_reg.as_bytes());
+                    data.extend_from_slice(vbs_reg.as_bytes());
                 }
+
+                let file_offset = file_data.write_file_data(&data);
+
+                let info = IGVM_VHS_VP_CONTEXT {
+                    gpa: 0.into(),
+                    compatibility_mask: *compatibility_mask,
+                    file_offset,
+                    vp_index: 0,
+                    reserved: 0,
+                };
 
                 append_header(
                     &info,
@@ -2609,7 +2662,6 @@ impl IgvmFile {
             self.revision.fixed_header_size() + variable_header_section_size;
 
         let mut variable_header_binary = Vec::new();
-        let mut file_data = Vec::new();
 
         // Add platform headers
         for header in &self.platform_headers {
@@ -2633,16 +2685,13 @@ impl IgvmFile {
             assert_eq!(variable_header_binary.len() % 8, 0);
         }
 
+        // dedup file data
+        let mut file_data = FileDataSerialize::new(file_data_section_start);
+
         // Add directive headers
         for header in &self.directive_headers {
             header
-                .write_binary_header(
-                    (file_data_section_start + file_data.len())
-                        .try_into()
-                        .map_err(|_| Error::FileDataSectionTooLarge)?,
-                    &mut variable_header_binary,
-                    &mut file_data,
-                )
+                .write_binary_header(&mut variable_header_binary, &mut file_data)
                 .map_err(Error::InvalidBinaryDirectiveHeader)?;
             // TODO: All structure definitions should be 8 byte aligned. Should const assert defs instead and
             //       downgrade this or leave this assert in?
@@ -2678,6 +2727,7 @@ impl IgvmFile {
             }),
         };
 
+        let mut file_data = file_data.take();
         // Create the fixed header
         let total_file_size =
             fixed_header.as_bytes().len() + variable_header_binary.len() + file_data.len();
@@ -3813,11 +3863,13 @@ mod tests {
         platform_to_report: Option<IgvmPlatformType>,
     ) {
         let mut binary_header = Vec::new();
-        let mut file_data = Vec::new();
+        let mut file_data = FileDataSerialize::new(file_data_offset as usize);
 
         header
-            .write_binary_header(file_data_offset, &mut binary_header, &mut file_data)
+            .write_binary_header(&mut binary_header, &mut file_data)
             .unwrap();
+
+        let file_data = file_data.take();
 
         let common_header = IGVM_VHS_VARIABLE_HEADER::read_from_prefix(&binary_header[..])
             .expect("variable header must be present");
@@ -3992,6 +4044,44 @@ mod tests {
     }
 
     #[test]
+    fn test_page_data_dedup() {
+        // test two page datas with same contents refer to the same file offset
+        let gpa = 0x12 * PAGE_SIZE_4K;
+        let file_data_offset = 0x12340;
+        let data = vec![1, 2, 3, 4, 5, 4, 3, 2, 1];
+        let mut file_data = FileDataSerialize::new(file_data_offset);
+
+        let header = IgvmDirectiveHeader::PageData {
+            gpa,
+            compatibility_mask: 0,
+            flags: IgvmPageDataFlags::new(),
+            data_type: IgvmPageDataType::NORMAL,
+            data: data.clone(),
+        };
+
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        let mut third = Vec::new();
+
+        header
+            .write_binary_header(&mut first, &mut file_data)
+            .unwrap();
+        header
+            .write_binary_header(&mut second, &mut file_data)
+            .unwrap();
+        header
+            .write_binary_header(&mut third, &mut file_data)
+            .unwrap();
+
+        let first = IGVM_VHS_PAGE_DATA::read_from_prefix(&first).unwrap();
+        let second = IGVM_VHS_PAGE_DATA::read_from_prefix(&second).unwrap();
+        let third = IGVM_VHS_PAGE_DATA::read_from_prefix(&third).unwrap();
+
+        assert_eq!(first.file_offset, second.file_offset);
+        assert_eq!(second.file_offset, third.file_offset);
+    }
+
+    #[test]
     fn test_page_data_over_4k() {
         // TODO: once we support 2MB page datas, this will need to be fixed.
         let size = PAGE_SIZE_4K as usize + 1;
@@ -4003,7 +4093,7 @@ mod tests {
             data: vec![0; size],
         };
 
-        match header.write_binary_header(1000, &mut Vec::new(), &mut Vec::new()) {
+        match header.write_binary_header(&mut Vec::new(), &mut FileDataSerialize::new(0)) {
             Err(BinaryHeaderError::InvalidDataSize) => {}
             _ => {
                 panic!("invalid serialization")
@@ -4116,7 +4206,7 @@ mod tests {
         };
 
         assert!(matches!(
-            header.write_binary_header(1000, &mut Vec::new(), &mut Vec::new()),
+            header.write_binary_header(&mut Vec::new(), &mut FileDataSerialize::new(0)),
             Err(BinaryHeaderError::UnalignedSize(1234))
         ));
     }
@@ -4276,7 +4366,7 @@ mod tests {
             compatibility_mask: 0x1,
             vtl2_protectable: true,
         };
-        match header.write_binary_header(1234, &mut Vec::new(), &mut Vec::new()) {
+        match header.write_binary_header(&mut Vec::new(), &mut FileDataSerialize::new(0)) {
             Err(BinaryHeaderError::UnalignedAddress(err_gpa)) => {
                 assert_eq!(gpa, err_gpa);
             }
@@ -4294,7 +4384,7 @@ mod tests {
             compatibility_mask: 0x1,
             vtl2_protectable: true,
         };
-        match header.write_binary_header(1234, &mut Vec::new(), &mut Vec::new()) {
+        match header.write_binary_header(&mut Vec::new(), &mut FileDataSerialize::new(0)) {
             Err(BinaryHeaderError::UnalignedSize(err_size)) => {
                 assert_eq!(size as u64, err_size);
             }
@@ -4332,7 +4422,7 @@ mod tests {
         };
 
         let header = IgvmDirectiveHeader::ParameterInsert(raw_header);
-        match header.write_binary_header(1234, &mut Vec::new(), &mut Vec::new()) {
+        match header.write_binary_header(&mut Vec::new(), &mut FileDataSerialize::new(0)) {
             Err(BinaryHeaderError::UnalignedAddress(err_gpa)) => {
                 assert_eq!(gpa, err_gpa);
             }
