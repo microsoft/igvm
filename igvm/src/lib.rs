@@ -146,10 +146,12 @@ impl FileDataSerialize {
         }
 
         let offset = self.file_offset;
+        self.file_offset += file_data.len();
         self.file_data.extend_from_slice(file_data);
+
         let offset: u32 = offset.try_into().expect("file data offset must fit in u32");
         self.file_data_map.insert(file_data.to_vec(), offset);
-        self.file_offset += file_data.len();
+
         offset
     }
 }
@@ -4073,12 +4075,32 @@ mod tests {
             .write_binary_header(&mut third, &mut file_data)
             .unwrap();
 
-        let first = IGVM_VHS_PAGE_DATA::read_from_prefix(&first).unwrap();
-        let second = IGVM_VHS_PAGE_DATA::read_from_prefix(&second).unwrap();
-        let third = IGVM_VHS_PAGE_DATA::read_from_prefix(&third).unwrap();
+        let mut different = Vec::new();
+        let header = IgvmDirectiveHeader::PageData {
+            gpa,
+            compatibility_mask: 0,
+            flags: IgvmPageDataFlags::new(),
+            data_type: IgvmPageDataType::NORMAL,
+            data: vec![5, 5, 5, 5, 5],
+        };
+        header
+            .write_binary_header(&mut different, &mut file_data)
+            .unwrap();
+
+        let read_raw_header = |data: &[u8]| {
+            let (_, data) = data.split_at(size_of::<IGVM_VHS_VARIABLE_HEADER>());
+            IGVM_VHS_PAGE_DATA::read_from_prefix(data).unwrap()
+        };
+
+        let first = read_raw_header(&first);
+        let second = read_raw_header(&second);
+        let third = read_raw_header(&third);
+        let different = read_raw_header(&different);
 
         assert_eq!(first.file_offset, second.file_offset);
         assert_eq!(second.file_offset, third.file_offset);
+        assert!(different.file_offset != first.file_offset);
+        assert_eq!(file_data.file_data_map.len(), 2);
     }
 
     #[test]
