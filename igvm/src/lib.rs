@@ -121,7 +121,7 @@ fn append_header<T: AsBytes>(
     debug_assert!(variable_headers.len() % 8 == 0);
 }
 
-/// The serialize for headers with file data. This serializer deduplicates data
+/// The serializer for headers with file data. This serializer deduplicates data
 /// seen before, by handing out a file offset to already serialized data
 /// sections that match.
 pub struct FileDataSerializer {
