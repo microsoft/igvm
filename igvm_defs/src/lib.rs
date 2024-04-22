@@ -730,15 +730,15 @@ pub struct IGVM_VHS_PAGE_DATA {
     pub gpa: u64,
     /// The compatibility mask for this structure.
     pub compatibility_mask: u32,
-    /// The FileOffset field specifies the offset in bytes at which the page
+    /// The `file_offset` field specifies the offset in bytes at which the page
     /// data can be found. Note that this offset is relative to the beginning of
     /// the file, not the start of the file data section.
     ///
-    /// If the file offset is zero, then a page of zeroes is to be loaded.  If
-    /// the page contents are to be measured, and the underlying platform
-    /// supports measured zero pages as a native page type, then the loader must
-    /// request this page type; otherwise, the loader must generate a page of
-    /// zeroes to load as the page contents.
+    /// If `file_offset`` is zero, then a page of zeroes is to be loaded. Even
+    /// though certain platforms may support a native zero page type, the loader
+    /// should treat this page with a `file_offset` of zero as a normal private
+    /// page with zeros as contents. A future page type will be required for
+    /// specifying native hardware zero pages on supported platforms.
     pub file_offset: u32,
     /// Flags.
     pub flags: IgvmPageDataFlags,
