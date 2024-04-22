@@ -19,7 +19,9 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::OnceLock;
 
-use crate::{Error, IgvmFile};
+use crate::Error;
+use crate::FileDataSerializer;
+use crate::IgvmFile;
 use open_enum::open_enum;
 
 /// An enumeration of the possible results that can be returned from C API
@@ -296,7 +298,7 @@ fn get_header(
                 .directive_headers
                 .get(index as usize)
                 .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
-                .write_binary_header(0, &mut header_binary, &mut Vec::<u8>::new())
+                .write_binary_header(&mut header_binary, &mut FileDataSerializer::new(0))
                 .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
         }
         _ => {
@@ -318,7 +320,7 @@ fn get_header_data(
 ) -> Result<IgvmHandle, IgvmResult> {
     let mut handle_lock = IgvmFileHandleLock::new(handle)?;
     let igvm = handle_lock.get_mut()?;
-    let mut header_data = Vec::<u8>::new();
+    let mut header_data = FileDataSerializer::new(0);
 
     if section == IgvmHeaderSection::HEADER_SECTION_DIRECTIVE {
         let header = igvm
@@ -327,11 +329,14 @@ fn get_header_data(
             .get(index as usize)
             .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
         header
-            .write_binary_header(0, &mut Vec::<u8>::new(), &mut header_data)
+            .write_binary_header(&mut Vec::<u8>::new(), &mut header_data)
             .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
     } else {
         return Err(IgvmResult::IGVMAPI_INVALID_PARAMETER);
     }
+
+    let header_data = header_data.take();
+
     if header_data.is_empty() {
         Err(IgvmResult::IGVMAPI_NO_DATA)
     } else {

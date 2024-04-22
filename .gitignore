@@ -16,3 +16,6 @@ Cargo.lock
 
 # Header files generated for the C API by igvm_c/Makefile
 igvm_c/include/*.h
+
+# Ignore vscode directories
+.vscode/
