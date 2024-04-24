@@ -895,12 +895,12 @@ pub struct IgvmNativeVpContextX64 {
     pub rflags: u64,
     /// IDT base address.
     pub idtr_base: u64,
-    /// IDT size.
-    pub idtr_size: u16,
+    /// IDT limit.
+    pub idtr_limit: u16,
     /// Reserved.
     pub reserved: [u16; 2],
-    /// GDT size.
-    pub gdtr_size: u16,
+    /// GDT limit.
+    pub gdtr_limit: u16,
     /// GDT base.
     pub gdtr_base: u64,
     /// Four code segment attributes are defined.
