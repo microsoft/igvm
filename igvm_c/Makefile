@@ -14,6 +14,7 @@ TARGET_PATH="$(IGVM_DIR)/target_c/debug"
 endif
 
 PREFIX ?= /usr
+DESTDIR ?= ""
 
 CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/target_c cargo
 
@@ -60,8 +61,10 @@ $(TARGET_PATH)/igvm.pc:
 	sed s:prefix=.\*:prefix=$(PREFIX): $(IGVM_DIR)/igvm_c/igvm.pc > $(TARGET_PATH)/igvm.pc
 
 install: $(TARGET_PATH)/igvm.pc
-	mkdir -p $(PREFIX)/include/igvm
-	mkdir -p $(PREFIX)/lib64/pkgconfig
-	install -m 644 $(TARGET_PATH)/libigvm.a $(PREFIX)/lib64
-	install -m 644 $(IGVM_DIR)/igvm_c/include/* $(PREFIX)/include/igvm
-	install -m 644 $(TARGET_PATH)/igvm.pc $(PREFIX)/lib64/pkgconfig
+	mkdir -p $(DESTDIR)/$(PREFIX)/include/igvm
+	mkdir -p $(DESTDIR)/$(PREFIX)/lib64/pkgconfig
+	install -m 644 $(TARGET_PATH)/libigvm.a $(DESTDIR)/$(PREFIX)/lib64
+	install -m 644 $(IGVM_DIR)/igvm_c/include/* $(DESTDIR)/$(PREFIX)/include/igvm
+	install -m 644 $(TARGET_PATH)/igvm.pc $(DESTDIR)/$(PREFIX)/lib64/pkgconfig
+	mkdir -p $(DESTDIR)/$(PREFIX)/bin/
+	install -m 755 $(TARGET_PATH)/dump_igvm $(DESTDIR)/$(PREFIX)/bin/
