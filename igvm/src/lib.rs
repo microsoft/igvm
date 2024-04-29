@@ -3071,21 +3071,63 @@ impl IgvmFile {
         (regions, page_table_fixup)
     }
 
-    /// Merge the `other` [`IgvmFile`] into `self`.
+    /// Merge a vec of directive headers into this file. This attempts to
+    /// deduplicate headers by merging compatibility masks. This merge is stable
+    /// and does not modify the order of either self or other, leaving
+    /// measurements intact.
     ///
-    /// This will change compatabilty masks of `other` if any conflict with the
-    /// current file.
+    /// This method is O(n*m) where n is the number of headers in self, and m is
+    /// the number of headers in other_directives.
     ///
-    /// Parameter area indices will be changed to avoid any conflicts. While
-    /// it's technically possible to merge parameter areas, it would require
-    /// each parameter usage within that parameter area match exactly between
-    /// different platforms due to only the final parameter insert having a
-    /// compatibility mask.
+    /// TODO: Is there a way to speed this up without breaking stability? This
+    /// is slow for large number of headers.
+    fn merge_dedup_directives(
+        &mut self,
+        other_directives: Vec<IgvmDirectiveHeader>,
+    ) -> Result<(), Error> {
+        let mut insert_index = 0;
+        'outer: for other_header in other_directives {
+            // Limit the search space to the earliest possible insertion point
+            // that would not break relative ordering.
+            for (index, header) in self.directive_headers[insert_index..]
+                .iter_mut()
+                .enumerate()
+                .rev()
+            {
+                if header.equivalent(&other_header) {
+                    match (
+                        header.compatibility_mask_mut(),
+                        other_header.compatibility_mask(),
+                    ) {
+                        (Some(header_mask), Some(other_header_mask)) => {
+                            debug_assert!(*header_mask & other_header_mask == 0);
+                            *header_mask |= other_header_mask
+                        }
+                        (None, None) => {}
+                        _ => unreachable!(),
+                    }
+                    // Search now ends after this merged header. Since we
+                    // limited the slice earlier, we add the index + 1 to the
+                    // overall starting point.
+                    insert_index += index + 1;
+                    continue 'outer;
+                }
+            }
+            // Unable to merge the header into an existing header, append at the
+            // specified index and update the end of search index.
+            self.directive_headers.insert(insert_index, other_header);
+            insert_index += 1;
+        }
+
+        Ok(())
+    }
+
+    /// Internal implementation of merge used by public methods. Has different
+    /// toggles for different behavior. This method is a stable merge.
     ///
-    /// To preserve all potential measurements in both `self` and `other`,
-    /// merging is stable and will not modify the relative order of directives
-    /// in both IGVM files.
-    pub fn merge(&mut self, mut other: IgvmFile) -> Result<(), Error> {
+    /// `dedup_directives` will attempt to deduplicate directives, which is
+    /// O(n^2) on the number of headers.
+    fn merge_internal(&mut self, mut other: IgvmFile, dedup_directives: bool) -> Result<(), Error> {
         // Individual validation on each IgvmFile should have already been done.
         // Validate the combination of both is valid.
         #[cfg(debug_assertions)]
@@ -3333,43 +3375,45 @@ impl IgvmFile {
         self.initialization_headers
             .append(&mut other.initialization_headers);
 
-        // Merge or append each directive header, searching starting from the
-        // back.
-        let mut insert_index = 0;
-        'outer: for other_header in other.directive_headers {
-            // Limit the search space to the earliest possible insertion point
-            // that would not break relative ordering.
-            for (index, header) in self.directive_headers[insert_index..]
-                .iter_mut()
-                .enumerate()
-                .rev()
-            {
-                if header.equivalent(&other_header) {
-                    match (
-                        header.compatibility_mask_mut(),
-                        other_header.compatibility_mask(),
-                    ) {
-                        (Some(header_mask), Some(other_header_mask)) => {
-                            debug_assert!(*header_mask & other_header_mask == 0);
-                            *header_mask |= other_header_mask
-                        }
-                        (None, None) => {}
-                        _ => unreachable!(),
-                    }
-                    // Search now ends after this merged header. Since we
-                    // limited the slice earlier, we add the index + 1 to the
-                    // overall starting point.
-                    insert_index += index + 1;
-                    continue 'outer;
-                }
-            }
-            // Unable to merge the header into an existing header, append at the
-            // specified index and update the end of search index.
-            self.directive_headers.insert(insert_index, other_header);
-            insert_index += 1;
+        // Dedup directives if requested.
+        if dedup_directives {
+            self.merge_dedup_directives(other.directive_headers)?;
+        } else {
+            self.directive_headers.append(&mut other.directive_headers);
         }
 
         Ok(())
+    }
+
+    /// Merge the `other` [`IgvmFile`] into `self`.
+    ///
+    /// This will change compatabilty masks of `other` if any conflict with the
+    /// current file.
+    ///
+    /// Parameter area indices will be changed to avoid any conflicts. While
+    /// it's technically possible to merge parameter areas, it would require
+    /// each parameter usage within that parameter area match exactly between
+    /// different platforms due to only the final parameter insert having a
+    /// compatibility mask.
+    ///
+    /// To preserve all potential measurements in both `self` and `other`,
+    /// merging is stable and will not modify the relative order of directives
+    /// in both IGVM files.
+    ///
+    /// The runtime of this function is O(n*m) where n is the number of headers
+    /// in self, and m is the number of headers in other.
+    pub fn merge(&mut self, other: IgvmFile) -> Result<(), Error> {
+        self.merge_internal(other, true)
+    }
+
+    /// Merge `other` into self, only fixing up compatibilty masks and parameter
+    /// area indices as necessary, like [`Self::merge`]. No deduplication of
+    /// headers will be done.
+    ///
+    /// The runtime of this function is O(n+m) where n is the number of headers
+    /// in self, and m is the number of headers in other.
+    pub fn merge_simple(&mut self, other: IgvmFile) -> Result<(), Error> {
+        self.merge_internal(other, false)
     }
 }
 
@@ -3628,6 +3672,75 @@ mod tests {
             };
 
             a.merge(b).unwrap();
+            assert_igvm_equal(&a, &merged);
+        }
+
+        #[test]
+        fn test_merge_simple() {
+            let data1 = vec![1; PAGE_SIZE_4K as usize];
+            let data2 = vec![2; PAGE_SIZE_4K as usize];
+            let data3 = vec![3; PAGE_SIZE_4K as usize];
+            let data4 = vec![4; PAGE_SIZE_4K as usize];
+            let mut a = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+                initialization_headers: vec![],
+                directive_headers: vec![
+                    new_page_data(0, 1, &data1),
+                    new_page_data(1, 1, &data2),
+                    new_page_data(2, 1, &data3),
+                    new_page_data(4, 1, &data4),
+                    new_page_data(10, 1, &data1),
+                    new_page_data(11, 1, &data2),
+                    new_page_data(12, 1, &data3),
+                    new_page_data(14, 1, &data4),
+                ],
+            };
+            let b = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::SEV_SNP)],
+                initialization_headers: vec![],
+                directive_headers: vec![
+                    new_page_data(0, 1, &data1),
+                    new_page_data(1, 1, &data2),
+                    new_page_data(2, 1, &data3),
+                    new_page_data(4, 1, &data4),
+                    new_page_data(20, 1, &data1),
+                    new_page_data(21, 1, &data2),
+                    new_page_data(22, 1, &data3),
+                    new_page_data(24, 1, &data4),
+                ],
+            };
+            let merged = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![
+                    new_platform(0x1, IgvmPlatformType::VSM_ISOLATION),
+                    new_platform(0x2, IgvmPlatformType::SEV_SNP),
+                ],
+                initialization_headers: vec![],
+                directive_headers: vec![
+                    // original vsm headers
+                    new_page_data(0, 1, &data1),
+                    new_page_data(1, 1, &data2),
+                    new_page_data(2, 1, &data3),
+                    new_page_data(4, 1, &data4),
+                    new_page_data(10, 1, &data1),
+                    new_page_data(11, 1, &data2),
+                    new_page_data(12, 1, &data3),
+                    new_page_data(14, 1, &data4),
+                    // snp headers with new mask
+                    new_page_data(0, 2, &data1),
+                    new_page_data(1, 2, &data2),
+                    new_page_data(2, 2, &data3),
+                    new_page_data(4, 2, &data4),
+                    new_page_data(20, 2, &data1),
+                    new_page_data(21, 2, &data2),
+                    new_page_data(22, 2, &data3),
+                    new_page_data(24, 2, &data4),
+                ],
+            };
+
+            a.merge_simple(b).unwrap();
             assert_igvm_equal(&a, &merged);
         }
 
