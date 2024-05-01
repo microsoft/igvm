@@ -32,9 +32,9 @@ void test_header_counts(void) {
     igvm = igvm_new_from_binary(igvm_buf, igvm_buf_length);
     CU_ASSERT(igvm > 0);
 
-    CU_ASSERT_EQUAL(igvm_header_count(igvm, HEADER_SECTION_PLATFORM), 1);
-    CU_ASSERT_EQUAL(igvm_header_count(igvm, HEADER_SECTION_INITIALIZATION), 2);
-    CU_ASSERT_EQUAL(igvm_header_count(igvm, HEADER_SECTION_DIRECTIVE), 11);
+    CU_ASSERT_EQUAL(igvm_header_count(igvm, IGVM_HEADER_SECTION_PLATFORM), 1);
+    CU_ASSERT_EQUAL(igvm_header_count(igvm, IGVM_HEADER_SECTION_INITIALIZATION), 2);
+    CU_ASSERT_EQUAL(igvm_header_count(igvm, IGVM_HEADER_SECTION_DIRECTIVE), 11);
 
     igvm_free(igvm);
 }
@@ -47,7 +47,7 @@ void test_platform_header(void) {
 
     igvm = igvm_new_from_binary(igvm_buf, igvm_buf_length);
     CU_ASSERT(igvm > 0);
-    data = igvm_get_header(igvm, HEADER_SECTION_PLATFORM, 0);
+    data = igvm_get_header(igvm, IGVM_HEADER_SECTION_PLATFORM, 0);
     CU_ASSERT(data > 0);
 
     header = (IGVM_VHS_VARIABLE_HEADER *)igvm_get_buffer(igvm, data);
@@ -73,7 +73,7 @@ void test_initialization_header(void) {
 
     igvm = igvm_new_from_binary(igvm_buf, igvm_buf_length);
     CU_ASSERT(igvm > 0);
-    data = igvm_get_header(igvm, HEADER_SECTION_INITIALIZATION, 0);
+    data = igvm_get_header(igvm, IGVM_HEADER_SECTION_INITIALIZATION, 0);
     CU_ASSERT(data > 0);
 
     /* First entry */
@@ -88,7 +88,7 @@ void test_initialization_header(void) {
     igvm_free_buffer(igvm, data);
 
     /* Second entry */
-    data = igvm_get_header(igvm, HEADER_SECTION_INITIALIZATION, 1);
+    data = igvm_get_header(igvm, IGVM_HEADER_SECTION_INITIALIZATION, 1);
     CU_ASSERT(data > 0);
 
     header = (IGVM_VHS_VARIABLE_HEADER *)igvm_get_buffer(igvm, data);
@@ -115,7 +115,7 @@ void test_directive_header(void) {
 
     igvm = igvm_new_from_binary(igvm_buf, igvm_buf_length);
     CU_ASSERT(igvm > 0);
-    data = igvm_get_header(igvm, HEADER_SECTION_DIRECTIVE, 1);
+    data = igvm_get_header(igvm, IGVM_HEADER_SECTION_DIRECTIVE, 1);
     CU_ASSERT(data > 0);
 
     header = (IGVM_VHS_VARIABLE_HEADER *)igvm_get_buffer(igvm, data);
@@ -132,7 +132,7 @@ void test_directive_header(void) {
     CU_ASSERT_EQUAL(page->reserved, 0);
     igvm_free_buffer(igvm, data);
 
-    data = igvm_get_header(igvm, HEADER_SECTION_DIRECTIVE, 8);
+    data = igvm_get_header(igvm, IGVM_HEADER_SECTION_DIRECTIVE, 8);
     header = (IGVM_VHS_VARIABLE_HEADER *)igvm_get_buffer(igvm, data);
     CU_ASSERT_EQUAL(header->typ, IGVM_VHT_PARAMETER_AREA);
     CU_ASSERT_EQUAL(header->length, sizeof(IGVM_VHS_PARAMETER_AREA));
@@ -142,7 +142,7 @@ void test_directive_header(void) {
     CU_ASSERT_EQUAL(param_area->number_of_bytes, 0x1000);
     igvm_free_buffer(igvm, data);
 
-    data = igvm_get_header(igvm, HEADER_SECTION_DIRECTIVE, 9);
+    data = igvm_get_header(igvm, IGVM_HEADER_SECTION_DIRECTIVE, 9);
     CU_ASSERT(data > 0);
     header = (IGVM_VHS_VARIABLE_HEADER *)igvm_get_buffer(igvm, data);
     CU_ASSERT_EQUAL(header->typ, IGVM_VHT_VP_COUNT_PARAMETER);
@@ -152,7 +152,7 @@ void test_directive_header(void) {
     CU_ASSERT_EQUAL(param->byte_offset, 0);
     igvm_free_buffer(igvm, data);
 
-    data = igvm_get_header(igvm, HEADER_SECTION_DIRECTIVE, 10);
+    data = igvm_get_header(igvm, IGVM_HEADER_SECTION_DIRECTIVE, 10);
     CU_ASSERT(data > 0);
     header = (IGVM_VHS_VARIABLE_HEADER *)igvm_get_buffer(igvm, data);
     CU_ASSERT_EQUAL(header->typ, IGVM_VHT_PARAMETER_INSERT);
@@ -175,7 +175,7 @@ void test_associated_data(void) {
 
     igvm = igvm_new_from_binary(igvm_buf, igvm_buf_length);
     CU_ASSERT(igvm > 0);
-    data = igvm_get_header_data(igvm, HEADER_SECTION_DIRECTIVE, 3);
+    data = igvm_get_header_data(igvm, IGVM_HEADER_SECTION_DIRECTIVE, 3);
     CU_ASSERT(data > 0);
     
     data_length = igvm_get_buffer_size(igvm, data);
@@ -198,7 +198,7 @@ void test_no_associated_data(void) {
 
     igvm = igvm_new_from_binary(igvm_buf, igvm_buf_length);
     CU_ASSERT(igvm > 0);
-    CU_ASSERT_EQUAL(igvm_get_header_data(igvm, HEADER_SECTION_DIRECTIVE, 9), IGVMAPI_NO_DATA);
+    CU_ASSERT_EQUAL(igvm_get_header_data(igvm, IGVM_HEADER_SECTION_DIRECTIVE, 9), IGVMAPI_NO_DATA);
 
     igvm_free(igvm);
 }

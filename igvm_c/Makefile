@@ -38,7 +38,7 @@ $(TARGET_PATH)/test_data:
 include/igvm.h: $(RUST_SOURCE)
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm.toml $(IGVM_DIR)/igvm -o "$(API_DIR)/include/igvm.h"
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm_defs.toml $(IGVM_DIR)/igvm_defs -o "$(API_DIR)/include/igvm_defs.h"
-	$(API_DIR)/scripts/post_process.sh "$(API_DIR)/include/igvm_defs.h"
+	$(API_DIR)/scripts/post_process.sh "$(API_DIR)/include"
 
 $(TARGET_PATH)/dump_igvm: $(API_DIR)/include/igvm.h $(API_DIR)/sample/dump_igvm.c $(TARGET_PATH)/libigvm.a
 	cc -g3 -O0 -I $(API_DIR) -L $(TARGET_PATH) -o $@ $^ -ligvm -ldl -pthread -lm -lutil -lrt

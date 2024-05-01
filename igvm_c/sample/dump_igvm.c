@@ -276,7 +276,7 @@ static int dump_igvm(uint8_t* igvm_buf, unsigned long igvm_length)
         return 1;
     }
 
-    for (long section = 0; section <= HEADER_SECTION_DIRECTIVE; ++section) {
+    for (long section = 0; section <= IGVM_HEADER_SECTION_DIRECTIVE; ++section) {
         int32_t count = igvm_header_count(igvm, (IgvmHeaderSection)section);
         printf("----------------------------------------------------------\n"
                "%s count = %ld\n\n",

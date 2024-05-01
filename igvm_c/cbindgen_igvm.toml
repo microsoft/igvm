@@ -26,3 +26,8 @@ include_version = true
 
 [export]
 include = ["IgvmResult"]
+
+[export.rename]
+"X64_PAGE_SIZE" = "IGVM_X64_PAGE_SIZE"
+"X64_LARGE_PAGE_SIZE" = "IGVM_X64_LARGE_PAGE_SIZE"
+"X64_1GB_PAGE_SIZE" = "IGVM_X64_1GB_PAGE_SIZE"
