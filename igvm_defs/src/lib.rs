@@ -377,6 +377,14 @@ pub enum IgvmPlatformType {
     SEV_SNP = 0x02,
     /// Intel TDX.
     TDX = 0x03,
+    /// AMD SEV.
+    #[cfg(feature = "unstable")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    SEV = 0x04,
+    /// AMD SEV-ES
+    #[cfg(feature = "unstable")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    SEV_ES = 0x05,
 }
 
 impl Default for IgvmPlatformType {
@@ -393,6 +401,14 @@ pub const IGVM_VSM_ISOLATION_PLATFORM_VERSION: u16 = 0x1;
 pub const IGVM_SEV_SNP_PLATFORM_VERSION: u16 = 0x1;
 /// Platform version for [`IgvmPlatformType::TDX`].
 pub const IGVM_TDX_PLATFORM_VERSION: u16 = 0x1;
+/// Platform version for [`IgvmPlatformType::SEV`].
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+pub const IGVM_SEV_PLATFORM_VERSION: u16 = 0x1;
+/// Platform version for [`IgvmPlatformType::SEV_ES`].
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+pub const IGVM_SEV_ES_PLATFORM_VERSION: u16 = 0x1;
 
 /// This structure indicates which isolation platforms are compatible with this
 /// guest image. A separate [`IGVM_VHS_SUPPORTED_PLATFORM`] structure must be
@@ -809,10 +825,10 @@ pub struct IGVM_VHS_VP_CONTEXT {
     /// The guest physical address where the VP context data should be
     /// deposited, if required.
     ///
-    /// For NAIVE or VBS, this must be zero. There is no VP context data to be
+    /// For AMD SEV, NATIVE or VBS, this must be zero. There is no VP context data to be
     /// deposited into the guest address space.
     ///
-    /// For AMD SEV-SNP, this is the GPA to place the VMSA structure at.
+    /// For AMD SEV-ES or SEV-SNP, this is the GPA to place the VMSA structure at.
     pub gpa: u64_le,
     /// The compatibility mask.
     pub compatibility_mask: u32,
@@ -822,7 +838,8 @@ pub struct IGVM_VHS_VP_CONTEXT {
     /// defined by [`VbsVpContextRegister`] structures prefixed by a
     /// [`VbsVpContextHeader`] in the file data section.
     ///
-    /// For AMD SEV-SNP, the data is the form of the AMD SEV-SNP VMSA structure.
+    /// For AMD SEV-ES and SEV-SNP, the data is the form of the AMD SEV-SNP VMSA
+    /// structure.
     pub file_offset: u32,
     /// The VP index for this VP context.
     pub vp_index: u16,
@@ -851,7 +868,9 @@ pub struct IGVM_VHS_ERROR_RANGE {
     pub size_bytes: u32,
 }
 
-/// Format of [`IGVM_VHS_VP_CONTEXT`] file data for a native x86-64 image.
+/// Format of [`IGVM_VHS_VP_CONTEXT`] file data for a native x86-64 image or
+/// for x86_64 isolation platforms that do not support measurement of the
+/// initial context, such as AMD SEV.
 /// Registers not specified here are initialized to their architectural
 /// reset values.
 ///

@@ -60,6 +60,10 @@ pub enum IsolationType {
     Snp,
     /// This guest is isolated with TDX (physical or emulated).
     Tdx,
+    /// This guest is isolated with SEV (physical or emulated).
+    Sev,
+    /// This guest is isolated with SEV-ES (physical or emulated).
+    SevEs,
 }
 
 impl From<IsolationType> for igvm_defs::IgvmPlatformType {
@@ -69,6 +73,8 @@ impl From<IsolationType> for igvm_defs::IgvmPlatformType {
             IsolationType::Vbs => IgvmPlatformType::VSM_ISOLATION,
             IsolationType::Snp => IgvmPlatformType::SEV_SNP,
             IsolationType::Tdx => IgvmPlatformType::TDX,
+            IsolationType::Sev => IgvmPlatformType::SEV,
+            IsolationType::SevEs => IgvmPlatformType::SEV_ES,
         }
     }
 }
@@ -242,7 +248,18 @@ impl IgvmPlatformHeader {
                         }
                         // TODO: shared gpa boundary req?
                     }
-
+                    IgvmPlatformType::SEV => {
+                        if info.platform_version != IGVM_SEV_PLATFORM_VERSION {
+                            return Err(BinaryHeaderError::InvalidPlatformVersion);
+                        }
+                        // TODO: shared gpa boundary req?
+                    }
+                    IgvmPlatformType::SEV_ES => {
+                        if info.platform_version != IGVM_SEV_ES_PLATFORM_VERSION {
+                            return Err(BinaryHeaderError::InvalidPlatformVersion);
+                        }
+                        // TODO: shared gpa boundary req?
+                    }
                     _ => {
                         return Err(BinaryHeaderError::InvalidPlatformType);
                     }
@@ -1831,7 +1848,7 @@ impl IgvmDirectiveHeader {
                             }
                         }
                     }
-                    Some(IgvmPlatformType::SEV_SNP) => {
+                    Some(IgvmPlatformType::SEV_SNP) | Some(IgvmPlatformType::SEV_ES) => {
                         // Read the VMSA which is stored as 4K file data.
                         let start = (header.file_offset - file_data_start) as usize;
                         if file_data.len() < start {
@@ -1858,7 +1875,7 @@ impl IgvmDirectiveHeader {
                             vmsa,
                         }
                     }
-                    Some(IgvmPlatformType::NATIVE) => {
+                    Some(IgvmPlatformType::NATIVE) | Some(IgvmPlatformType::SEV) => {
                         // Read the context which is stored as 4K file data.
                         let start = (header.file_offset - file_data_start) as usize;
                         if file_data.len() < start {
@@ -2345,7 +2362,9 @@ impl IgvmFile {
                         IgvmPlatformType::VSM_ISOLATION => {}
                         IgvmPlatformType::SEV_SNP
                         | IgvmPlatformType::TDX
-                        | IgvmPlatformType::NATIVE => {
+                        | IgvmPlatformType::NATIVE
+                        | IgvmPlatformType::SEV
+                        | IgvmPlatformType::SEV_ES => {
                             if revision.arch() != Arch::X64 {
                                 return Err(Error::PlatformArchUnsupported {
                                     arch: revision.arch(),
