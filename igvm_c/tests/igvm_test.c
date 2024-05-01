@@ -55,7 +55,7 @@ void test_platform_header(void) {
     CU_ASSERT_EQUAL(header->length, sizeof(IGVM_VHS_SUPPORTED_PLATFORM));
 
     platform = (IGVM_VHS_SUPPORTED_PLATFORM *)(igvm_get_buffer(igvm, data) + sizeof(IGVM_VHS_VARIABLE_HEADER));
-    CU_ASSERT_EQUAL(platform->platform_type, VSM_ISOLATION);
+    CU_ASSERT_EQUAL(platform->platform_type, IGVM_PLATFORM_TYPE_VSM_ISOLATION);
     CU_ASSERT_EQUAL(platform->compatibility_mask, 1);
     CU_ASSERT_EQUAL(platform->platform_version, 1);
     CU_ASSERT_EQUAL(platform->highest_vtl, 0);
@@ -122,7 +122,7 @@ void test_directive_header(void) {
     CU_ASSERT_EQUAL(header->typ, IGVM_VHT_PAGE_DATA);
     CU_ASSERT_EQUAL(header->length, sizeof(IGVM_VHS_PAGE_DATA));
     page = (IGVM_VHS_PAGE_DATA *)(igvm_get_buffer(igvm, data) + sizeof(IGVM_VHS_VARIABLE_HEADER));
-    CU_ASSERT_EQUAL(page->data_type, NORMAL);
+    CU_ASSERT_EQUAL(page->data_type, IGVM_PAGE_DATA_TYPE_NORMAL);
     CU_ASSERT_EQUAL(page->compatibility_mask, 1);
     CU_ASSERT_EQUAL(page->file_offset, 0);
     CU_ASSERT_EQUAL(page->flags.is_2mb_page, 0);
