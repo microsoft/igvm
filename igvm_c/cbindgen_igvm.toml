@@ -24,5 +24,12 @@ autogen_warning = "/* This file is generated using cbindgen. Do not edit this fi
 
 include_version = true
 
+no_includes = true
+
 [export]
 include = ["IgvmResult"]
+
+[export.rename]
+"X64_PAGE_SIZE" = "IGVM_X64_PAGE_SIZE"
+"X64_LARGE_PAGE_SIZE" = "IGVM_X64_LARGE_PAGE_SIZE"
+"X64_1GB_PAGE_SIZE" = "IGVM_X64_1GB_PAGE_SIZE"

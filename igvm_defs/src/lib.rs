@@ -363,6 +363,8 @@ pub struct IGVM_VHS_VARIABLE_HEADER {
 
 /// Enum describing different isolation platforms for
 /// [`IGVM_VHS_SUPPORTED_PLATFORM`] structures.
+/// cbindgen:prefix-with-name=true
+/// cbindgen:rename-all=ScreamingSnakeCase
 #[open_enum]
 #[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
@@ -654,6 +656,8 @@ pub struct IgvmEnvironmentInfo {
 
 /// Page data types that describe the type of import for
 /// [`IGVM_VHS_PAGE_DATA`].
+/// cbindgen:prefix-with-name=true
+/// cbindgen:rename-all=ScreamingSnakeCase
 #[open_enum]
 #[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
@@ -1122,6 +1126,8 @@ pub struct IGVM_VHS_VBS_MEASUREMENT {
 }
 
 /// The type of memory described by a memory map entry or device tree node.
+/// cbindgen:prefix-with-name=true
+/// cbindgen:rename-all=ScreamingSnakeCase
 #[open_enum]
 #[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]

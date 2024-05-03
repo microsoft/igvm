@@ -177,7 +177,7 @@ static void igvm_dump_variable_header(IGVM_VHS_VARIABLE_HEADER *header)
         printf("  GPA: %016lX\n", vhs->gpa);
         printf("  CompatibilityMask: %08X\n", vhs->compatibility_mask);
         printf("  FileOffset: %08X\n", vhs->file_offset);
-        printf("  Flags: %08X\n", UINT32_FLAGS_VALUE(vhs->flags));
+        printf("  Flags: %08X\n", IGVM_UINT32_FLAGS_VALUE(vhs->flags));
         printf("  Reserved: %08X\n", vhs->reserved);
         break;
     }
@@ -205,7 +205,7 @@ static void igvm_dump_variable_header(IGVM_VHS_VARIABLE_HEADER *header)
         printf("  GPA: %016lX\n", vhs->gpa);
         printf("  CompatibilityMask: %08X\n", vhs->compatibility_mask);
         printf("  NumberOfBytes: %08X\n", vhs->number_of_bytes);
-        printf("  Flags: %08X\n", UINT32_FLAGS_VALUE(vhs->flags));
+        printf("  Flags: %08X\n", IGVM_UINT32_FLAGS_VALUE(vhs->flags));
         printf("  Reserved: %08X\n", vhs->reserved);
         break;
     }
@@ -276,7 +276,7 @@ static int dump_igvm(uint8_t* igvm_buf, unsigned long igvm_length)
         return 1;
     }
 
-    for (long section = 0; section <= HEADER_SECTION_DIRECTIVE; ++section) {
+    for (long section = 0; section <= IGVM_HEADER_SECTION_DIRECTIVE; ++section) {
         int32_t count = igvm_header_count(igvm, (IgvmHeaderSection)section);
         printf("----------------------------------------------------------\n"
                "%s count = %ld\n\n",
