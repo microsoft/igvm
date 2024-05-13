@@ -63,7 +63,7 @@ pub struct SevXmmRegister {
 ///         UINT64  SevFeatureDebugSwap             : 1;
 ///         UINT64  SevFeaturePreventHostIBS        : 1;
 ///         UINT64  SevFeatureSNPBTBIsolation       : 1;
-///         UINT64  SevFeatureResrved0              : 1;
+///         UINT64  SevFeatureVpmlSSS               : 1;
 ///         UINT64  SevFeatureSecureTscEn           : 1;
 ///         UINT64  SevFeatureResrved1              : 4;
 ///         UINT64  SevFeatureVmsaRegProt           : 1;
@@ -83,8 +83,7 @@ pub struct SevFeatures {
     pub debug_swap: bool,
     pub prevent_host_ibs: bool,
     pub snp_btb_isolation: bool,
-    #[bits(1)]
-    _reserved0: u8,
+    pub vmpl_supervisor_shadow_stack: bool,
     pub secure_tsc: bool,
     #[bits(4)]
     _reserved1: u8,
