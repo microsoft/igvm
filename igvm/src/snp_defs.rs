@@ -65,7 +65,8 @@ pub struct SevXmmRegister {
 ///         UINT64  SevFeatureSNPBTBIsolation       : 1;
 ///         UINT64  SevFeatureResrved               : 6;
 ///         UINT64  SevFeatureVmsaRegProt           : 1;
-///         UINT64  SevFeatureResrved2              : 49;
+///         UINT64  SevFeatureSmtProtection         : 1;
+///         UINT64  SevFeatureResrved2              : 48;
 ///     };
 /// };
 ///```
@@ -83,7 +84,8 @@ pub struct SevFeatures {
     #[bits(6)]
     _reserved: u8,
     pub vmsa_reg_protection: bool,
-    #[bits(49)]
+    pub smt_protection: bool,
+    #[bits(48)]
     _reserved2: u64,
 }
 
