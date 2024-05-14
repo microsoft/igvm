@@ -63,7 +63,12 @@ pub struct SevXmmRegister {
 ///         UINT64  SevFeatureDebugSwap             : 1;
 ///         UINT64  SevFeaturePreventHostIBS        : 1;
 ///         UINT64  SevFeatureSNPBTBIsolation       : 1;
-///         UINT64  SevFeatureResrved2              : 56;
+///         UINT64  SevFeatureVpmlSSS               : 1;
+///         UINT64  SevFeatureSecureTscEn           : 1;
+///         UINT64  SevFeatureResrved1              : 4;
+///         UINT64  SevFeatureVmsaRegProt           : 1;
+///         UINT64  SevFeatureSmtProtection         : 1;
+///         UINT64  SevFeatureResrved2              : 48;
 ///     };
 /// };
 ///```
@@ -78,8 +83,14 @@ pub struct SevFeatures {
     pub debug_swap: bool,
     pub prevent_host_ibs: bool,
     pub snp_btb_isolation: bool,
-    #[bits(56)]
-    _unused: u64,
+    pub vmpl_supervisor_shadow_stack: bool,
+    pub secure_tsc: bool,
+    #[bits(4)]
+    _reserved1: u8,
+    pub vmsa_reg_protection: bool,
+    pub smt_protection: bool,
+    #[bits(48)]
+    _reserved2: u64,
 }
 
 /// SEV Virtual interrupt control
