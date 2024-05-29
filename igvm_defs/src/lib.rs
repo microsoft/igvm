@@ -242,10 +242,10 @@ pub enum IgvmVariableHeaderType {
     /// [`IGVM_VHS_GUEST_POLICY`].
     IGVM_VHT_GUEST_POLICY = 0x101,
     /// A relocatable region structure described by
-    /// [`IGVM_VHS_RELOCATABLE_REGION`]. This is supported on X64 only.
+    /// [`IGVM_VHS_RELOCATABLE_REGION`].
     IGVM_VHT_RELOCATABLE_REGION = 0x102,
     /// A page table relocation region described by
-    /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`]. This is supported on X64 only.
+    /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`].
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
 
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
@@ -478,11 +478,11 @@ pub struct TdxPolicy {
 
 /// This region describes VTL2.
 pub const IGVM_VHF_RELOCATABLE_REGION_IS_VTL2: u8 = 0x1;
-/// RIP for the specified VP and VTL should be adjusted by the amount this
-/// region was relocated.
+/// The starting executable address for the specified VP and VTL should be
+/// adjusted by the amount this region was relocated (RIP on x64, PC on arm64).
 pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_RIP: u8 = 0x2;
 /// GDTR for the specified VP and VTL should be adjusted by the amount this
-/// region was relocated.
+/// region was relocated. This is supported on X64 only.
 pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_GDTR: u8 = 0x4;
 
 /// Indicate a relocatable region. This region may be relocated according to the
@@ -531,18 +531,20 @@ pub struct IGVM_VHS_RELOCATABLE_REGION {
 }
 
 /// Indicate the region of memory containing the page table which can be
-/// relocated. This region must contain CR3. Page table pages that are described
-/// that lay outside of this region will not be walked nor fixed up. Page tables
-/// cannot lie within other relocatable regions. Similar to
-/// [`IGVM_VHS_RELOCATABLE_REGION`], the loader must guarantee memory is present
-/// for the whole region described by this header.
+/// relocated. This region must contain the root page table (CR3 on x64, TTBR0
+/// on arm64). Page table pages that are described that lay outside of this
+/// region will not be walked nor fixed up. Page tables cannot lie within
+/// other relocatable regions. Similar to [`IGVM_VHS_RELOCATABLE_REGION`], the
+/// loader must guarantee memory is present for the whole region described by
+/// this header.
 ///
 /// The VP index and VTL is used to describe the paging state for the page
-/// table. CR3 will be then fixed up according to the amount this region was
-/// relocated by. Other VPs within the same VTL that have the same initial CR3
-/// value as the described VP will also be fixed up. There must be a
-/// [`IGVM_VHS_VP_CONTEXT`] structure for the given vp index and vtl. The given
-/// VP must be in 64 bit mode with paging enabled.
+/// table. The root address (CR3 on x64, TTBR0 on arm64) will be then fixed up
+/// according to the amount this region was relocated by. Other VPs within the
+/// same VTL that have the same initial page table address as the described VP
+/// will also be fixed up. There must be a [`IGVM_VHS_VP_CONTEXT`] structure
+/// for the given vp index and vtl. The given VP must be in 64 bit mode with
+/// paging enabled.
 ///
 /// This region describes any additional pages the loader may use to allocate
 /// additional entries to handle relocation. `used_size` represents the
@@ -597,13 +599,13 @@ pub struct IGVM_VHS_RELOCATABLE_REGION {
 /// is.
 ///
 /// # Architecture
-/// X64 only.
+/// X64 and ARM64.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
 pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
     /// Compatibility mask.
     pub compatibility_mask: u32,
-    /// VP Index for paging information, like CR3 and EFER.
+    /// VP Index for paging information, like the base page register.
     pub vp_index: u16,
     /// VTL for paging information.
     pub vtl: u8,
