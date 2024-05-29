@@ -14,7 +14,7 @@ TARGET_PATH="$(IGVM_DIR)/target_c/debug"
 endif
 
 PREFIX ?= /usr
-DESTDIR ?= ""
+DESTDIR ?= 
 
 CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/target_c cargo
 
