@@ -485,6 +485,7 @@ pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS: u8 = 0x2;
 /// region was relocated. This is supported on X64 only.
 pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_GDTR: u8 = 0x4;
 
+/// Legacy name for ['IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS']
 pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_RIP: u8 =
     IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS;
 
@@ -609,8 +610,8 @@ pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
     /// Compatibility mask.
     pub compatibility_mask: u32,
     /// VP Index for paging information.
-    /// On X64 these registers include CR3, CR4, RIP and GDTR
-    /// On aarch64 these registers include TTBR0, TCR and PC.
+    /// On X64 these registers include CR3, CR4 and EFER.
+    /// On aarch64 these registers include TCR and TTBR0.
     pub vp_index: u16,
     /// VTL for paging information.
     pub vtl: u8,
