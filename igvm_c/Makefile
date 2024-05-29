@@ -22,6 +22,9 @@ FEATURES = "igvm-c"
 
 RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_DIR)/igvm_defs/src/lib.rs
 
+# Determine igvm crate version from Cargo.toml
+VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.toml)
+
 .PHONY: install
 
 all: include/igvm.h $(TARGET_PATH)/dump_igvm test
@@ -58,14 +61,13 @@ clean:
 	$(CARGO) clean --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 	rm -f $(API_DIR)/include/igvm.h $(API_DIR)/include/igvm_defs.h $(TARGET_PATH)/dump_igvm $(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
 
-$(TARGET_PATH)/igvm.pc:
-	sed s:prefix=.\*:prefix=$(PREFIX): $(IGVM_DIR)/igvm_c/igvm.pc > $(TARGET_PATH)/igvm.pc
-
-install: $(TARGET_PATH)/igvm.pc
+install:
 	mkdir -p $(DESTDIR)/$(PREFIX)/include/igvm
 	mkdir -p $(DESTDIR)/$(PREFIX)/lib64/pkgconfig
 	install -m 644 $(TARGET_PATH)/libigvm.a $(DESTDIR)/$(PREFIX)/lib64
 	install -m 644 $(IGVM_DIR)/igvm_c/include/* $(DESTDIR)/$(PREFIX)/include/igvm
-	install -m 644 $(TARGET_PATH)/igvm.pc $(DESTDIR)/$(PREFIX)/lib64/pkgconfig
 	mkdir -p $(DESTDIR)/$(PREFIX)/bin/
 	install -m 755 $(TARGET_PATH)/dump_igvm $(DESTDIR)/$(PREFIX)/bin/
+	VERSION=$(VERSION) PREFIX=$(PREFIX) envsubst '$$VERSION $$PREFIX' \
+				< $(IGVM_DIR)/igvm_c/igvm.pc.in \
+				> $(DESTDIR)/$(PREFIX)/lib64/pkgconfig/igvm.pc
