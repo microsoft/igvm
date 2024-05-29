@@ -480,10 +480,13 @@ pub struct TdxPolicy {
 pub const IGVM_VHF_RELOCATABLE_REGION_IS_VTL2: u8 = 0x1;
 /// The starting executable address for the specified VP and VTL should be
 /// adjusted by the amount this region was relocated (RIP on x64, PC on arm64).
-pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_RIP: u8 = 0x2;
+pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS: u8 = 0x2;
 /// GDTR for the specified VP and VTL should be adjusted by the amount this
 /// region was relocated. This is supported on X64 only.
 pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_GDTR: u8 = 0x4;
+
+pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_RIP: u8 =
+    IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS;
 
 /// Indicate a relocatable region. This region may be relocated according to the
 /// fields within the header. The region must be relocated as a whole, with each
@@ -605,7 +608,9 @@ pub struct IGVM_VHS_RELOCATABLE_REGION {
 pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
     /// Compatibility mask.
     pub compatibility_mask: u32,
-    /// VP Index for paging information, like the base page register.
+    /// VP Index for paging information.
+    /// On X64 these registers include CR3, CR4, RIP and GDTR
+    /// On aarch64 these registers include TTBR0, TCR and PC.
     pub vp_index: u16,
     /// VTL for paging information.
     pub vtl: u8,
