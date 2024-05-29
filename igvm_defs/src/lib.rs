@@ -480,14 +480,13 @@ pub struct TdxPolicy {
 pub const IGVM_VHF_RELOCATABLE_REGION_IS_VTL2: u8 = 0x1;
 /// The starting executable address for the specified VP and VTL should be
 /// adjusted by the amount this region was relocated (RIP on x64, PC on arm64).
-pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS: u8 = 0x2;
+pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_PC: u8 = 0x2;
 /// GDTR for the specified VP and VTL should be adjusted by the amount this
 /// region was relocated. This is supported on X64 only.
 pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_GDTR: u8 = 0x4;
 
-/// Legacy name for ['IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS']
-pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_RIP: u8 =
-    IGVM_VHF_RELOCATABLE_REGION_APPLY_START_ADDRESS;
+/// Legacy name for ['IGVM_VHF_RELOCATABLE_REGION_APPLY_PC']
+pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_RIP: u8 = IGVM_VHF_RELOCATABLE_REGION_APPLY_PC;
 
 /// Indicate a relocatable region. This region may be relocated according to the
 /// fields within the header. The region must be relocated as a whole, with each
