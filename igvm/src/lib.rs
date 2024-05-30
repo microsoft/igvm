@@ -2428,13 +2428,6 @@ impl IgvmFile {
                     vp_index,
                     vtl,
                 } => {
-                    if revision.arch() != Arch::X64 {
-                        return Err(Error::InvalidHeaderArch {
-                            arch: revision.arch(),
-                            header_type: "PageTableRelocationRegion".into(),
-                        });
-                    }
-
                     // Header can be only specified once per compatibility mask
                     if compatibility_mask & page_table_masks != 0 {
                         return Err(Error::MultiplePageTableRelocationHeaders);
@@ -2467,13 +2460,6 @@ impl IgvmFile {
                     vp_index,
                     vtl,
                 } => {
-                    if revision.arch() != Arch::X64 {
-                        return Err(Error::InvalidHeaderArch {
-                            arch: revision.arch(),
-                            header_type: "RelocatableRegion".into(),
-                        });
-                    }
-
                     check_region_overlap(
                         *compatibility_mask,
                         *relocation_region_gpa,
