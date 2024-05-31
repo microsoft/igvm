@@ -2447,7 +2447,7 @@ impl IgvmFile {
                     vp_index,
                     vtl,
                 } => {
-                    if revision.arch() != Arch::X64 {
+                    if !matches!(revision.arch(), Arch::X64 | Arch::AArch64) {
                         return Err(Error::InvalidHeaderArch {
                             arch: revision.arch(),
                             header_type: "PageTableRelocationRegion".into(),
@@ -2486,7 +2486,7 @@ impl IgvmFile {
                     vp_index,
                     vtl,
                 } => {
-                    if revision.arch() != Arch::X64 {
+                    if !matches!(revision.arch(), Arch::X64 | Arch::AArch64) {
                         return Err(Error::InvalidHeaderArch {
                             arch: revision.arch(),
                             header_type: "RelocatableRegion".into(),
