@@ -1168,6 +1168,10 @@ pub enum MemoryMapEntryType {
     /// applied. Some isolation architectures only allow VTL2 protections on
     /// certain memory ranges.
     VTL2_PROTECTABLE = 0x3,
+    /// Special Purpose memory (SPM). This is memory with special properties
+    /// reserved for application specific purposes and shouldn't be used by
+    /// the firmware or operating system.
+    SPECIAL_PURPOSE = 0x4,
 }
 
 impl Default for MemoryMapEntryType {
