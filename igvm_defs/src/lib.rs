@@ -1170,7 +1170,11 @@ pub enum MemoryMapEntryType {
     VTL2_PROTECTABLE = 0x3,
     /// Special Purpose memory (SPM). This is memory with special properties
     /// reserved for application specific purposes and shouldn't be used by
-    /// the firmware or operating system.
+    /// the firmware or operating system. This corresponds with the UEFI
+    /// memory map entry flag EFI_MEMORY_SP, introduced in UEFI 2.8.
+    /// See https://uefi.org/specs/UEFI/2.10/07_Services_Boot_Services.html
+    #[cfg(feature = "unstable")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
     SPECIAL_PURPOSE = 0x4,
 }
 
