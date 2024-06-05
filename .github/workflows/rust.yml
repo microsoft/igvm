@@ -27,6 +27,8 @@ jobs:
       run: cargo check --all-features --all-targets
     - name: Clippy
       run: cargo clippy --all-features --all-targets -- -D warnings
+    - name: Clippy igvm_defs no features
+      run: cargo clippy -p igvm_defs -- -D warnings
     - name: Build
       run: cargo build --verbose ${{ matrix.features }}
     - name: Run unit tests
@@ -44,7 +46,7 @@ jobs:
         run: sudo apt-get install -y libcunit1-dev
       - name: Build and test
         run: make -f igvm_c/Makefile
-    
+
   miri:
     name: "Miri"
     strategy:
