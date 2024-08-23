@@ -599,7 +599,7 @@ pub struct IGVM_VHS_RELOCATABLE_REGION {
 /// - The page table contains a 1GB entry mapping 0x0 - 1GB.
 /// - Region A is chosen to be relocated to a new base, 0x5000.
 /// - The page table entry previously identity mapping VA 0x0 - 1GB still maps
-/// the relocated region, and is left as is mapping VA 0x0 - 1GB to PA 0x0 - 1GB.
+///   the relocated region, and is left as is mapping VA 0x0 - 1GB to PA 0x0 - 1GB.
 ///
 /// For regions that are relocated at a non-aligned amount greater than the PTE
 /// mapping size, the IGVM file is considered invalid.
@@ -608,11 +608,11 @@ pub struct IGVM_VHS_RELOCATABLE_REGION {
 /// - Region A is relocatable, and originally describes GPAs 0x0000 to 0x2000.
 /// - The page table contains a 1GB entry mapping 0x0 - 1GB.
 /// - Region A is chosen to be relocated to a new base, 1.5GB. This has a
-/// relocation offset of +1.5GB.
+///   relocation offset of +1.5GB.
 /// - The page table entry previously identity mapping VA 0x0 - 1GB needs to be
-/// relocated, but cannot be due to the the mapping now being unaligned. This
-/// IGVM file is invalid, as the relocation region A has an incorrect
-/// `relocation_alignment`.
+///   relocated, but cannot be due to the the mapping now being unaligned. This
+///   IGVM file is invalid, as the relocation region A has an incorrect
+///   `relocation_alignment`.
 ///
 /// Page table entries that map ranges that have not been relocated are left as
 /// is.
