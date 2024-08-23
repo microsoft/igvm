@@ -488,7 +488,12 @@ pub struct TdxPolicy {
     pub debug_allowed: u8,
     #[bits(1)]
     pub sept_ve_disable: u8,
-    #[bits(62)]
+    // Whether the TD allows migrating to another host.
+    // For context, see the "Intel TDX Module v1.5 TD Migration Architecture Specification" available at:
+    // https://www.intel.com/content/www/us/en/developer/tools/trust-domain-extensions/documentation.html
+    #[bits(1)]
+    pub migratable: u8,
+    #[bits(61)]
     pub reserved: u64,
 }
 
