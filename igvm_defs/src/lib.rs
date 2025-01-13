@@ -1181,6 +1181,11 @@ pub enum MemoryMapEntryType {
     #[cfg(feature = "unstable")]
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
     SPECIFIC_PURPOSE = 0x4,
+    /// Hidden memory is visible in the memory map but is hidden from any other
+    /// enumeration that may be used to expose available memory to the VM.
+    #[cfg(feature = "unstable")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    HIDDEN = 0x5,
 }
 
 impl Default for MemoryMapEntryType {
