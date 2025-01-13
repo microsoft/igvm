@@ -86,7 +86,7 @@ struct IgvmFileHandleLock<'a> {
     handle: IgvmHandle,
 }
 
-impl<'a> IgvmFileHandleLock<'a> {
+impl IgvmFileHandleLock<'_> {
     pub fn new(handle: IgvmHandle) -> Result<Self, IgvmResult> {
         let lock = IGVM_HANDLES
             .get()
