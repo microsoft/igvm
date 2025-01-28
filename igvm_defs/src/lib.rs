@@ -104,9 +104,10 @@ use bitfield_struct::bitfield;
 use core::mem::size_of;
 use open_enum::open_enum;
 use static_assertions::const_assert_eq;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 pub mod dt;
 
@@ -119,7 +120,7 @@ mod packed_nums {
 
 /// The version 1 fixed header that is at the start of every IGVM file.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct IGVM_FIXED_HEADER {
     /// A u32 that must hold the value described by [`IGVM_MAGIC_VALUE`].
     pub magic: u32,
@@ -148,7 +149,7 @@ pub struct IGVM_FIXED_HEADER {
 #[cfg(feature = "unstable")]
 #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct IGVM_FIXED_HEADER_V2 {
     /// A u32 that must hold the value described by [`IGVM_MAGIC_VALUE`].
     pub magic: u32,
@@ -206,7 +207,7 @@ pub const PAGE_SIZE_4K: u64 = 4096;
 #[cfg(feature = "unstable")]
 #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 #[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum IgvmArchitecture {
     /// Corresponds to x86-64 / AMD64, 64 bit x86.
@@ -227,7 +228,7 @@ pub enum IgvmArchitecture {
 /// The top bit of this type may be set to indicate a loader may safely ignore
 /// that structure.
 #[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum IgvmVariableHeaderType {
     /// Invalid.
@@ -352,7 +353,7 @@ pub const IGVM_VHT_RANGE_DIRECTIVE: core::ops::RangeInclusive<u32> = 0x301..=0x4
 /// The header describing each structure in the variable header section. Headers
 /// are aligned to 8 byte boundaries.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct IGVM_VHS_VARIABLE_HEADER {
     /// The type of the header.
     pub typ: IgvmVariableHeaderType,
@@ -366,7 +367,7 @@ pub struct IGVM_VHS_VARIABLE_HEADER {
 /// cbindgen:prefix-with-name=true
 /// cbindgen:rename-all=ScreamingSnakeCase
 #[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum IgvmPlatformType {
     /// Native platform type without isolation.
@@ -418,7 +419,7 @@ pub const IGVM_SEV_ES_PLATFORM_VERSION: u16 = 0x1;
 /// prior to any other structures that refer to the compatibility mask that this
 /// structure defines.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_SUPPORTED_PLATFORM {
     /// A bitmask that is used in following variable header structures that
     /// correspond with this platform. Headers that have this corresponding bit
@@ -443,7 +444,7 @@ pub struct IGVM_VHS_SUPPORTED_PLATFORM {
 /// This structure defines the guest policy that is isolation architecture
 /// dependent.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_GUEST_POLICY {
     /// The specified policy which is isolation architecture dependent.
     ///
@@ -462,7 +463,7 @@ pub struct IGVM_VHS_GUEST_POLICY {
 /// For now, this matches the definition in Section 4.3 Guest Policy of the AMD
 /// SEV-SNP specification.
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct SnpPolicy {
     pub abi_minor: u8,
     pub abi_major: u8,
@@ -482,7 +483,7 @@ pub struct SnpPolicy {
 
 /// The Intel TDX policy used in [`IGVM_VHS_GUEST_POLICY::policy`].
 #[bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct TdxPolicy {
     #[bits(1)]
     pub debug_allowed: u8,
@@ -524,7 +525,7 @@ pub const IGVM_VHF_RELOCATABLE_REGION_APPLY_RIP: u8 = IGVM_VHF_RELOCATABLE_REGIO
 /// # Architecture
 /// X64 only.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_RELOCATABLE_REGION {
     /// Compatibility mask.
     pub compatibility_mask: u32,
@@ -625,7 +626,7 @@ pub struct IGVM_VHS_RELOCATABLE_REGION {
 /// # Architecture
 /// X64 and ARM64.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
     /// Compatibility mask.
     pub compatibility_mask: u32,
@@ -654,7 +655,7 @@ pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
 /// The paramter area is imported into the guest address space via a
 /// [`IGVM_VHS_PARAMETER_INSERT`] structure.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_PARAMETER_AREA {
     /// The size of the parameter region, in bytes. This must be page aligned.
     pub number_of_bytes: u64,
@@ -674,7 +675,7 @@ pub struct IGVM_VHS_PARAMETER_AREA {
 #[cfg(feature = "unstable")]
 #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 #[bitfield(u32)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IgvmEnvironmentInfo {
     /// Default state of memory is not assigned to the guest (shared)
     pub memory_is_shared: bool,
@@ -687,7 +688,7 @@ pub struct IgvmEnvironmentInfo {
 /// cbindgen:prefix-with-name=true
 /// cbindgen:rename-all=ScreamingSnakeCase
 #[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum IgvmPageDataType {
     /// Normal page data.
@@ -711,7 +712,7 @@ impl Default for IgvmPageDataType {
 
 /// Flags for [`IGVM_VHS_PAGE_DATA`] structures.
 #[bitfield(u32)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IgvmPageDataFlags {
     /// This page data is a 2MB page. If this is set, the
     /// [`IGVM_VHS_PAGE_DATA::gpa`] field must be aligned to 2MB.
@@ -755,7 +756,7 @@ pub struct IgvmPageDataFlags {
 /// | TDX partitioning enabled  | Highest VTL only       |
 ///
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_PAGE_DATA {
     /// The guest physical address at which this page data should be loaded; it
     /// must be aligned to a page size boundary.
@@ -783,7 +784,7 @@ pub struct IGVM_VHS_PAGE_DATA {
 /// This structure controls the insertion of a parameter area into the guest
 /// address space.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_PARAMETER_INSERT {
     /// The guest physical address where this parameter area should be imported
     /// into the guest address space. It must be page size aligned.
@@ -814,7 +815,7 @@ pub struct IGVM_VHS_PARAMETER_INSERT {
 /// guests must perform validation on the values written into parameter areas. A
 /// malicious or buggy loader may write any values.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_PARAMETER {
     /// The paramter area index for this parameter.
     pub parameter_area_index: u32,
@@ -832,7 +833,7 @@ pub struct IGVM_VHS_PARAMETER {
 ///
 /// Note that this structure is not aligned to 8 bytes.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_VP_CONTEXT {
     /// The guest physical address where the VP context data should be
     /// deposited, if required.
@@ -869,7 +870,7 @@ pub struct IGVM_VHS_VP_CONTEXT {
 /// The format of the data written by the guest into the error ranges to be read
 /// by the host are outside of the scope of this specification.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_ERROR_RANGE {
     /// The guest physical address that this error range starts at. It must be
     /// page aligned.
@@ -890,7 +891,7 @@ pub struct IGVM_VHS_ERROR_RANGE {
 #[cfg(feature = "unstable")]
 #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IgvmNativeVpContextX64 {
     /// RAX register.
     pub rax: u64,
@@ -976,7 +977,7 @@ pub struct IgvmNativeVpContextX64 {
 /// The format consists of a [`VbsVpContextHeader`] followed by a
 /// `register_count` of [`VbsVpContextRegister`].
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct VbsVpContextHeader {
     /// The number of registers in this VP context.
     pub register_count: u32,
@@ -985,7 +986,7 @@ pub struct VbsVpContextHeader {
 /// The registers associated with a VBS [`IGVM_VHS_VP_CONTEXT`] structure in the
 /// file data section.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Clone, Copy, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct VbsVpContextRegister {
     /// The VTL to import this register to.
     pub vtl: u8,
@@ -1010,7 +1011,7 @@ const_assert_eq!(size_of::<VbsVpContextRegister>(), 0x20);
 /// Note that the guest cannot rely on memory being present at this location at
 /// runtime, as a malicious host may choose to ignore this header.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_REQUIRED_MEMORY {
     /// The base guest physical address for this range. This must be page
     /// aligned.
@@ -1027,7 +1028,7 @@ pub struct IGVM_VHS_REQUIRED_MEMORY {
 
 /// Flags for [`IGVM_VHS_REQUIRED_MEMORY`].
 #[bitfield(u32)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct RequiredMemoryFlags {
     pub vtl2_protectable: bool,
     #[bits(31)]
@@ -1036,7 +1037,7 @@ pub struct RequiredMemoryFlags {
 
 /// A structure describing memory via a range of pages.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_MEMORY_RANGE {
     /// The base guest physical page number for this range.
     pub starting_gpa_page_number: u64,
@@ -1052,7 +1053,7 @@ pub struct IGVM_VHS_MEMORY_RANGE {
 /// [`IgvmVariableHeaderType::IGVM_VHT_DEVICE_TREE`] parameter should be used
 /// instead.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_MMIO_RANGES {
     /// The mmio ranges for the guest. Note that this structure can only report
     /// two ranges, regardless of how many are available to the guest.
@@ -1061,7 +1062,7 @@ pub struct IGVM_VHS_MMIO_RANGES {
 
 /// Signature for SNP ID block. See the corresponding PSP definitions.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_SNP_ID_BLOCK_SIGNATURE {
     /// r_comp
     pub r_comp: [u8; 72],
@@ -1071,7 +1072,7 @@ pub struct IGVM_VHS_SNP_ID_BLOCK_SIGNATURE {
 
 /// Public key for SNP ID block. See the corresponding PSP definitions.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY {
     /// curve
     pub curve: u32,
@@ -1093,7 +1094,7 @@ pub struct IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY {
 ///
 /// TODO: doc links for fields to SNP spec.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct IGVM_VHS_SNP_ID_BLOCK {
     /// Compatibility mask.
     pub compatibility_mask: u32,
@@ -1130,7 +1131,7 @@ pub struct IGVM_VHS_SNP_ID_BLOCK {
 ///
 /// TODO: doc fields
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct IGVM_VHS_VBS_MEASUREMENT {
     /// Compatibility mask
     pub compatibility_mask: u32,
@@ -1160,7 +1161,7 @@ pub struct IGVM_VHS_VBS_MEASUREMENT {
 /// cbindgen:prefix-with-name=true
 /// cbindgen:rename-all=ScreamingSnakeCase
 #[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 pub enum MemoryMapEntryType {
     /// Normal memory.
@@ -1201,7 +1202,7 @@ impl Default for MemoryMapEntryType {
 /// A well-behaved loader will report these in sorted order, with a final entry
 /// with `number_of_pages` with zero signifying the last entry.
 #[repr(C)]
-#[derive(Copy, Clone, Debug, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_MEMORY_MAP_ENTRY {
     /// The starting gpa page number for this range of memory.
     pub starting_gpa_page_number: u64,
@@ -1217,7 +1218,7 @@ pub struct IGVM_VHS_MEMORY_MAP_ENTRY {
 
 /// The signature algorithm to use for VBS digest.
 #[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum VbsDigestAlgorithm {
     /// Invalid.
@@ -1228,7 +1229,7 @@ pub enum VbsDigestAlgorithm {
 
 /// The signature algorithm to use for VBS measurement.
 #[open_enum]
-#[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum VbsSigningAlgorithm {
     /// Invalid.
