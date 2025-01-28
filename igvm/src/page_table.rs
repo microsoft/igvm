@@ -448,11 +448,7 @@ impl PageTableRelocationBuilder {
             .page_data
             .as_slice()
             .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| {
-                PageTable::read_from_prefix(chunk)
-                    .expect("chunk size is correct")
-                    .0
-            })
+            .map(|chunk| PageTable::read_from_bytes(chunk).expect("chunk size is correct"))
             .collect();
 
         // Map of PTEs to relocate. Maps new_va, (page table level, entry value)
@@ -735,20 +731,12 @@ mod tests {
         let expected: Vec<PageTable> = new_tables
             .as_slice()
             .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| {
-                PageTable::read_from_prefix(chunk)
-                    .expect("chunk size is correct")
-                    .0
-            })
+            .map(|chunk| PageTable::read_from_bytes(chunk).expect("chunk size is correct"))
             .collect();
         let actual: Vec<PageTable> = built_tables
             .as_slice()
             .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| {
-                PageTable::read_from_prefix(chunk)
-                    .expect("chunk size is correct")
-                    .0
-            })
+            .map(|chunk| PageTable::read_from_bytes(chunk).expect("chunk size is correct"))
             .collect();
 
         assert_eq!(expected.len(), actual.len());
@@ -896,20 +884,12 @@ mod tests {
         let expected: Vec<PageTable> = new_tables
             .as_slice()
             .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| {
-                PageTable::read_from_prefix(chunk)
-                    .expect("chunk size is correct")
-                    .0
-            })
+            .map(|chunk| PageTable::read_from_bytes(chunk).expect("chunk size is correct"))
             .collect();
         let actual: Vec<PageTable> = built_tables
             .as_slice()
             .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| {
-                PageTable::read_from_prefix(chunk)
-                    .expect("chunk size is correct")
-                    .0
-            })
+            .map(|chunk| PageTable::read_from_bytes(chunk).expect("chunk size is correct"))
             .collect();
 
         compare_page_tables(&expected, &actual);

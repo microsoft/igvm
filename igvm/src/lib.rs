@@ -20,7 +20,6 @@ use hv_defs::HvX64RegisterName;
 use hv_defs::Vtl;
 use igvm_defs::*;
 use page_table::PageTableRelocationBuilder;
-use parsing::FromBytesExt;
 use range_map_vec::RangeMap;
 use registers::AArch64Register;
 use registers::X86Register;
@@ -43,7 +42,6 @@ pub mod c_api;
 
 pub mod hv_defs;
 pub mod page_table;
-mod parsing;
 pub mod registers;
 pub mod snp_defs;
 
@@ -90,7 +88,7 @@ fn align_8(x: usize) -> usize {
 /// passed in slice with the remaining bytes left.
 ///
 /// On failure, returns [`BinaryHeaderError::InvalidVariableHeaderSize`].
-fn read_header<T: FromBytesExt + Immutable + KnownLayout>(
+fn read_header<T: FromBytes + Immutable + KnownLayout>(
     bytes: &mut &[u8],
 ) -> Result<T, BinaryHeaderError> {
     T::read_from_prefix(bytes)
@@ -1797,14 +1795,12 @@ impl IgvmDirectiveHeader {
                         let mut remaining_data = remaining_data;
 
                         for _ in 0..register_count {
-                            let reg = match VbsVpContextRegister::read_from_prefix_split(
-                                remaining_data,
-                            ) {
-                                Some((reg, slice)) => {
+                            let reg = match VbsVpContextRegister::read_from_prefix(remaining_data) {
+                                Ok((reg, slice)) => {
                                     remaining_data = slice;
                                     reg
                                 }
-                                None => return Err(BinaryHeaderError::InvalidDataSize),
+                                Err(_) => return Err(BinaryHeaderError::InvalidDataSize), // todo: zerocopy: map_err
                             };
 
                             registers.push(reg);
@@ -2822,7 +2818,7 @@ impl IgvmFile {
         let mut fixed_header = FixedHeader::V1(
             IGVM_FIXED_HEADER::read_from_prefix(file)
                 .map_err(|_| Error::InvalidFixedHeader)?
-                .0, // todo: zerocopy: map_err_2
+                .0, // todo: zerocopy: map_err
         );
 
         if fixed_header.magic() != IGVM_MAGIC_VALUE {
@@ -2834,7 +2830,7 @@ impl IgvmFile {
             IGVM_FORMAT_VERSION_2 => {
                 let v2 = IGVM_FIXED_HEADER_V2::read_from_prefix(file)
                     .map_err(|_| Error::InvalidFixedHeader)?
-                    .0; // todo: zerocopy: map_err_2
+                    .0; // todo: zerocopy: map_err
 
                 let arch = match v2.architecture {
                     IgvmArchitecture::X64 => Arch::X64,
@@ -4002,7 +3998,7 @@ mod tests {
 
     /// Test a variable header matches the supplied args. Also tests that the header deserialized returns the original
     /// header.
-    fn test_variable_header<T: FromBytesExt + Immutable + KnownLayout>(
+    fn test_variable_header<T: IntoBytes + Immutable + KnownLayout>(
         revision: IgvmRevision,
         header: IgvmDirectiveHeader,
         file_data_offset: u32,
@@ -4237,7 +4233,7 @@ mod tests {
 
         let read_raw_header = |data: &[u8]| {
             let (_, data) = data.split_at(size_of::<IGVM_VHS_VARIABLE_HEADER>());
-            IGVM_VHS_PAGE_DATA::read_from_prefix(data).unwrap().0 // todo: zerocopy: use-rest-of-range
+            IGVM_VHS_PAGE_DATA::read_from_prefix(data).unwrap().0
         };
 
         let first = read_raw_header(&first);

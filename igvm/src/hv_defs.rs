@@ -263,15 +263,11 @@ impl HvRegisterValue {
     }
 
     pub fn as_table(&self) -> HvX64TableRegister {
-        HvX64TableRegister::read_from_prefix(self.as_bytes())
-            .unwrap()
-            .0 // todo: zerocopy: use-rest-of-range
+        HvX64TableRegister::read_from_bytes(self.as_bytes()).unwrap()
     }
 
     pub fn as_segment(&self) -> HvX64SegmentRegister {
-        HvX64SegmentRegister::read_from_prefix(self.as_bytes())
-            .unwrap()
-            .0 // todo: zerocopy: use-rest-of-range
+        HvX64SegmentRegister::read_from_bytes(self.as_bytes()).unwrap()
     }
 }
 
@@ -312,16 +308,17 @@ pub struct HvX64TableRegister {
     pub limit: u16,
     pub base: u64,
 }
+static_assertions::const_assert_eq!(core::mem::size_of::<HvX64TableRegister>(), 16);
 
 impl From<HvX64TableRegister> for HvRegisterValue {
     fn from(val: HvX64TableRegister) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap().0 // todo: zerocopy: use-rest-of-range
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 
 impl From<HvRegisterValue> for HvX64TableRegister {
     fn from(val: HvRegisterValue) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap().0 // todo: zerocopy: use-rest-of-range
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 
@@ -333,16 +330,17 @@ pub struct HvX64SegmentRegister {
     pub selector: u16,
     pub attributes: u16,
 }
+static_assertions::const_assert_eq!(core::mem::size_of::<HvX64SegmentRegister>(), 16);
 
 impl From<HvX64SegmentRegister> for HvRegisterValue {
     fn from(val: HvX64SegmentRegister) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap().0 // todo: zerocopy: use-rest-of-range
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 
 impl From<HvRegisterValue> for HvX64SegmentRegister {
     fn from(val: HvRegisterValue) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap().0 // todo: zerocopy: use-rest-of-range
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 

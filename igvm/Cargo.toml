@@ -36,6 +36,7 @@ open-enum.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 zerocopy = { workspace = true, features = ["alloc"] }
+static_assertions.workspace = true
 
 [features]
 default = []
