@@ -353,7 +353,7 @@ macro_rules! registers {
         $(,)?
     }) => {
         #[open_enum]
-        #[derive(IntoBytes, Immutable, KnownLayout,FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u32)]
         pub enum $name {
             $($variant = $value,)*
