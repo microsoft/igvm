@@ -20,7 +20,6 @@ use hv_defs::HvX64RegisterName;
 use hv_defs::Vtl;
 use igvm_defs::*;
 use page_table::PageTableRelocationBuilder;
-use parsing::FromBytesExt;
 use range_map_vec::RangeMap;
 use registers::AArch64Register;
 use registers::X86Register;
@@ -32,16 +31,17 @@ use std::fmt;
 use std::mem::size_of;
 use std::mem::size_of_val;
 use thiserror::Error;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 #[cfg(feature = "igvm-c")]
 pub mod c_api;
 
 pub mod hv_defs;
 pub mod page_table;
-mod parsing;
 pub mod registers;
 pub mod snp_defs;
 
@@ -88,9 +88,11 @@ fn align_8(x: usize) -> usize {
 /// passed in slice with the remaining bytes left.
 ///
 /// On failure, returns [`BinaryHeaderError::InvalidVariableHeaderSize`].
-fn read_header<T: FromBytesExt>(bytes: &mut &[u8]) -> Result<T, BinaryHeaderError> {
-    T::read_from_prefix_split(bytes)
-        .ok_or(BinaryHeaderError::InvalidVariableHeaderSize)
+fn read_header<T: FromBytes + Immutable + KnownLayout>(
+    bytes: &mut &[u8],
+) -> Result<T, BinaryHeaderError> {
+    T::read_from_prefix(bytes)
+        .map_err(|_| BinaryHeaderError::InvalidVariableHeaderSize) // todo: zerocopy: map_err
         .map(|(header, remaining)| {
             *bytes = remaining;
             header
@@ -99,7 +101,7 @@ fn read_header<T: FromBytesExt>(bytes: &mut &[u8]) -> Result<T, BinaryHeaderErro
 
 /// Helper function to append a given binary header to a variable header
 /// section.
-fn append_header<T: AsBytes>(
+fn append_header<T: IntoBytes + Immutable + KnownLayout>(
     header: &T,
     header_type: IgvmVariableHeaderType,
     variable_headers: &mut Vec<u8>,
@@ -1785,22 +1787,20 @@ impl IgvmDirectiveHeader {
                         // First read the VbsVpContextHeader at file offset
                         let start = (header.file_offset - file_data_start) as usize;
                         let (VbsVpContextHeader { register_count }, remaining_data) =
-                            VbsVpContextHeader::read_from_prefix_split(&file_data[start..])
-                                .ok_or(BinaryHeaderError::InvalidDataSize)?;
+                            VbsVpContextHeader::read_from_prefix(&file_data[start..])
+                                .map_err(|_| BinaryHeaderError::InvalidDataSize)?; // todo: zerocopy: map_err
 
                         let mut registers: Vec<VbsVpContextRegister> = Vec::new();
                         let mut vp_vtl: Option<u8> = None;
                         let mut remaining_data = remaining_data;
 
                         for _ in 0..register_count {
-                            let reg = match VbsVpContextRegister::read_from_prefix_split(
-                                remaining_data,
-                            ) {
-                                Some((reg, slice)) => {
+                            let reg = match VbsVpContextRegister::read_from_prefix(remaining_data) {
+                                Ok((reg, slice)) => {
                                     remaining_data = slice;
                                     reg
                                 }
-                                None => return Err(BinaryHeaderError::InvalidDataSize),
+                                Err(_) => return Err(BinaryHeaderError::InvalidDataSize), // todo: zerocopy: map_err
                             };
 
                             registers.push(reg);
@@ -1861,9 +1861,10 @@ impl IgvmDirectiveHeader {
                             .ok_or(BinaryHeaderError::InvalidDataSize)?;
 
                         // Copy the VMSA bytes into the VMSA, and validate the remaining bytes are 0.
-                        let mut vmsa = SevVmsa::new_box_zeroed();
+                        // todo: zerocopy: as of 0.8, can recover from allocation failure
+                        let mut vmsa = SevVmsa::new_box_zeroed().unwrap();
                         let (vmsa_slice, remaining) = data.split_at(size_of::<SevVmsa>());
-                        vmsa.as_bytes_mut().copy_from_slice(vmsa_slice);
+                        vmsa.as_mut_bytes().copy_from_slice(vmsa_slice);
                         if remaining.iter().any(|b| *b != 0) {
                             return Err(BinaryHeaderError::InvalidVmsa);
                         }
@@ -1889,10 +1890,11 @@ impl IgvmDirectiveHeader {
 
                         // Copy the context bytes into the context structure,
                         // and validate the remaining bytes are 0.
-                        let mut context = IgvmNativeVpContextX64::new_box_zeroed();
+                        // todo: zerocopy: as of 0.8, can recover from allocation failure
+                        let mut context = IgvmNativeVpContextX64::new_box_zeroed().unwrap();
                         let (context_slice, remaining) =
                             data.split_at(size_of::<IgvmNativeVpContextX64>());
-                        context.as_bytes_mut().copy_from_slice(context_slice);
+                        context.as_mut_bytes().copy_from_slice(context_slice);
                         if remaining.iter().any(|b| *b != 0) {
                             return Err(BinaryHeaderError::InvalidContext);
                         }
@@ -2814,7 +2816,9 @@ impl IgvmFile {
 
         // Read the IGVM fixed header
         let mut fixed_header = FixedHeader::V1(
-            IGVM_FIXED_HEADER::read_from_prefix(file).ok_or(Error::InvalidFixedHeader)?,
+            IGVM_FIXED_HEADER::read_from_prefix(file)
+                .map_err(|_| Error::InvalidFixedHeader)?
+                .0, // todo: zerocopy: map_err
         );
 
         if fixed_header.magic() != IGVM_MAGIC_VALUE {
@@ -2825,7 +2829,8 @@ impl IgvmFile {
             IGVM_FORMAT_VERSION_1 => IgvmRevision::V1,
             IGVM_FORMAT_VERSION_2 => {
                 let v2 = IGVM_FIXED_HEADER_V2::read_from_prefix(file)
-                    .ok_or(Error::InvalidFixedHeader)?;
+                    .map_err(|_| Error::InvalidFixedHeader)?
+                    .0; // todo: zerocopy: map_err
 
                 let arch = match v2.architecture {
                     IgvmArchitecture::X64 => Arch::X64,
@@ -2903,7 +2908,10 @@ impl IgvmFile {
 
         while !variable_headers.is_empty() {
             // Peek the next fixed variable header to determine what kind of header to parse
-            match IGVM_VHS_VARIABLE_HEADER::read_from_prefix(variable_headers) {
+            match IGVM_VHS_VARIABLE_HEADER::read_from_prefix(variable_headers)
+                .ok()
+                .map(|h| h.0)
+            {
                 Some(header) if IGVM_VHT_RANGE_PLATFORM.contains(&header.typ.0) => {
                     if parsing_stage != VariableHeaderParsingStage::Platform {
                         // Only legal to parse platform headers before other types
@@ -3990,7 +3998,7 @@ mod tests {
 
     /// Test a variable header matches the supplied args. Also tests that the header deserialized returns the original
     /// header.
-    fn test_variable_header<T: FromBytesExt>(
+    fn test_variable_header<T: IntoBytes + Immutable + KnownLayout>(
         revision: IgvmRevision,
         header: IgvmDirectiveHeader,
         file_data_offset: u32,
@@ -4009,7 +4017,8 @@ mod tests {
         let file_data = file_data.take();
 
         let common_header = IGVM_VHS_VARIABLE_HEADER::read_from_prefix(&binary_header[..])
-            .expect("variable header must be present");
+            .expect("variable header must be present")
+            .0;
 
         assert_eq!(common_header.typ, header_type);
         assert_eq!(
@@ -4116,7 +4125,7 @@ mod tests {
         };
         let expected_header = IGVM_VHS_PAGE_DATA {
             gpa,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         test_variable_header(
             IgvmRevision::V1,
@@ -4140,7 +4149,7 @@ mod tests {
         let expected_header = IGVM_VHS_PAGE_DATA {
             gpa,
             file_offset: file_data_offset,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         data.resize(PAGE_SIZE_4K as usize, 0);
         let expected_file_data = Some(data);
@@ -4166,7 +4175,7 @@ mod tests {
         let expected_header = IGVM_VHS_PAGE_DATA {
             gpa,
             file_offset: file_data_offset,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
         let expected_file_data = Some(data);
         test_variable_header(
@@ -4224,7 +4233,7 @@ mod tests {
 
         let read_raw_header = |data: &[u8]| {
             let (_, data) = data.split_at(size_of::<IGVM_VHS_VARIABLE_HEADER>());
-            IGVM_VHS_PAGE_DATA::read_from_prefix(data).unwrap()
+            IGVM_VHS_PAGE_DATA::read_from_prefix(data).unwrap().0
         };
 
         let first = read_raw_header(&first);
@@ -4465,7 +4474,7 @@ mod tests {
             number_of_bytes,
             compatibility_mask,
             flags,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         let header = IgvmDirectiveHeader::RequiredMemory {
@@ -4493,7 +4502,7 @@ mod tests {
             number_of_bytes,
             compatibility_mask,
             flags,
-            ..FromZeroes::new_zeroed()
+            ..FromZeros::new_zeroed()
         };
 
         let header = IgvmDirectiveHeader::RequiredMemory {

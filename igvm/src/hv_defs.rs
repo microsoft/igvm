@@ -10,9 +10,10 @@
 
 use core::fmt::Debug;
 use open_enum::open_enum;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 #[open_enum]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,7 +181,7 @@ impl From<Vtl> for u8 {
 
 /// An aligned u128 value.
 #[repr(C, align(16))]
-#[derive(Copy, Clone, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, PartialEq, Eq, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct AlignedU128([u8; 16]);
 
 impl AlignedU128 {
@@ -237,7 +238,7 @@ impl From<AlignedU128> for u128 {
 
 /// A `HV_REGISTER_VALUE` that represents virtual processor registers.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct HvRegisterValue(pub AlignedU128);
 
 impl HvRegisterValue {
@@ -262,11 +263,11 @@ impl HvRegisterValue {
     }
 
     pub fn as_table(&self) -> HvX64TableRegister {
-        HvX64TableRegister::read_from_prefix(self.as_bytes()).unwrap()
+        HvX64TableRegister::read_from_bytes(self.as_bytes()).unwrap()
     }
 
     pub fn as_segment(&self) -> HvX64SegmentRegister {
-        HvX64SegmentRegister::read_from_prefix(self.as_bytes()).unwrap()
+        HvX64SegmentRegister::read_from_bytes(self.as_bytes()).unwrap()
     }
 }
 
@@ -301,43 +302,45 @@ impl From<u128> for HvRegisterValue {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct HvX64TableRegister {
     pub pad: [u16; 3],
     pub limit: u16,
     pub base: u64,
 }
+static_assertions::const_assert_eq!(core::mem::size_of::<HvX64TableRegister>(), 16);
 
 impl From<HvX64TableRegister> for HvRegisterValue {
     fn from(val: HvX64TableRegister) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap()
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 
 impl From<HvRegisterValue> for HvX64TableRegister {
     fn from(val: HvRegisterValue) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap()
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct HvX64SegmentRegister {
     pub base: u64,
     pub limit: u32,
     pub selector: u16,
     pub attributes: u16,
 }
+static_assertions::const_assert_eq!(core::mem::size_of::<HvX64SegmentRegister>(), 16);
 
 impl From<HvX64SegmentRegister> for HvRegisterValue {
     fn from(val: HvX64SegmentRegister) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap()
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 
 impl From<HvRegisterValue> for HvX64SegmentRegister {
     fn from(val: HvRegisterValue) -> Self {
-        Self::read_from_prefix(val.as_bytes()).unwrap()
+        Self::read_from_bytes(val.as_bytes()).unwrap()
     }
 }
 
@@ -350,7 +353,7 @@ macro_rules! registers {
         $(,)?
     }) => {
         #[open_enum]
-        #[derive(AsBytes, FromBytes, FromZeroes, Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
         #[repr(u32)]
         pub enum $name {
             $($variant = $value,)*

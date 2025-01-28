@@ -4,9 +4,10 @@
 
 //! AMD SEV-SNP specific definitions.
 
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
 
 /// Virtual Event Injection
 /// Defined by the following union in C:
@@ -26,12 +27,12 @@ use zerocopy::FromZeroes;
 /// } SEV_EVENT_INJECT_INFO, *PSEV_EVENT_INJECT_INFO;
 /// ```
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct SevEventInjectInfo(pub u64);
 
 /// A X64 selector register.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct SevSelector {
     pub selector: u16,
     pub attrib: u16,
@@ -41,7 +42,7 @@ pub struct SevSelector {
 
 /// A X64 XMM register.
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct SevXmmRegister {
     pub low: u64,
     pub high: u64,
@@ -73,7 +74,7 @@ pub struct SevXmmRegister {
 /// };
 ///```
 #[bitfield_struct::bitfield(u64)]
-#[derive(AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct SevFeatures {
     pub snp: bool,
     pub vtom: bool,
@@ -117,12 +118,12 @@ pub struct SevFeatures {
 /// };
 ///```
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct SevVirtualInterruptControl(pub u64);
 
 /// SEV VMSA structure representing CPU state
 #[repr(C)]
-#[derive(Debug, Clone, Copy, AsBytes, FromBytes, FromZeroes, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct SevVmsa {
     // Selector Info
     pub es: SevSelector,

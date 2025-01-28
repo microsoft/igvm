@@ -8,9 +8,12 @@ use crate::hv_defs::Vtl;
 use range_map_vec::RangeMap;
 use std::collections::BTreeMap;
 use thiserror::Error;
-use zerocopy::AsBytes;
 use zerocopy::FromBytes;
-use zerocopy::FromZeroes;
+use zerocopy::FromZeros;
+use zerocopy::Immutable;
+use zerocopy::IntoBytes;
+use zerocopy::KnownLayout;
+use zerocopy::Unalign;
 
 const X64_CR4_LA57: u64 = 0x0000000000001000; // 5-level paging enabled
 
@@ -34,7 +37,7 @@ pub const X64_LARGE_PAGE_SIZE: u64 = 0x200000;
 /// Number of bytes in a 1GB page for X64.
 pub const X64_1GB_PAGE_SIZE: u64 = 0x40000000;
 
-#[derive(Copy, Clone, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Copy, Clone, PartialEq, Eq, IntoBytes, Immutable, KnownLayout, FromBytes)]
 #[repr(transparent)]
 pub struct PageTableEntry {
     entry: u64,
@@ -124,7 +127,7 @@ impl PageTableEntry {
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, PartialEq, Eq, AsBytes, FromBytes, FromZeroes)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct PageTable {
     entries: [PageTableEntry; PAGE_TABLE_ENTRY_COUNT],
 }
@@ -441,12 +444,10 @@ impl PageTableRelocationBuilder {
             return Err(Error::Cr3);
         }
 
-        // Create the initial page table based on the used_size of the region.
-        let mut page_tables: Vec<PageTable> = self
-            .page_data
-            .as_slice()
-            .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| PageTable::read_from_prefix(chunk).expect("chunk size is correct"))
+        let mut page_tables = <[Unalign<PageTable>]>::ref_from_bytes(self.page_data.as_slice())
+            .expect("page data is a valid list of page tables")
+            .iter()
+            .map(|v| v.into_inner())
             .collect();
 
         // Map of PTEs to relocate. Maps new_va, (page table level, entry value)
@@ -558,7 +559,8 @@ mod tests {
     use crate::hv_defs::Vtl;
     use range_map_vec::RangeMap;
     use zerocopy::FromBytes;
-    use zerocopy::FromZeroes;
+    use zerocopy::FromZeros;
+    use zerocopy::Unalign;
 
     #[derive(Debug, Clone)]
     struct PteInfo {
@@ -726,16 +728,19 @@ mod tests {
             .build(cr3_offset as i64, reloc_map, CpuPagingState { cr3, cr4: 0 })
             .unwrap();
 
-        let expected: Vec<PageTable> = new_tables
-            .as_slice()
-            .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| PageTable::read_from_prefix(chunk).expect("chunk size is correct"))
-            .collect();
-        let actual: Vec<PageTable> = built_tables
-            .as_slice()
-            .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| PageTable::read_from_prefix(chunk).expect("chunk size is correct"))
-            .collect();
+        let expected: Vec<PageTable> =
+            <[Unalign<PageTable>]>::ref_from_bytes(new_tables.as_slice())
+                .expect("page data is a valid list of page tables")
+                .iter()
+                .map(|v| v.into_inner())
+                .collect();
+
+        let actual: Vec<PageTable> =
+            <[Unalign<PageTable>]>::ref_from_bytes(built_tables.as_slice())
+                .expect("page data is a valid list of page tables")
+                .iter()
+                .map(|v| v.into_inner())
+                .collect();
 
         assert_eq!(expected.len(), actual.len());
 
@@ -879,16 +884,19 @@ mod tests {
             .build(0, reloc_map, CpuPagingState { cr3, cr4: 0 })
             .unwrap();
 
-        let expected: Vec<PageTable> = new_tables
-            .as_slice()
-            .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| PageTable::read_from_prefix(chunk).expect("chunk size is correct"))
-            .collect();
-        let actual: Vec<PageTable> = built_tables
-            .as_slice()
-            .chunks_exact(X64_PAGE_SIZE as usize)
-            .map(|chunk| PageTable::read_from_prefix(chunk).expect("chunk size is correct"))
-            .collect();
+        let expected: Vec<PageTable> =
+            <[Unalign<PageTable>]>::ref_from_bytes(new_tables.as_slice())
+                .expect("page data is a valid list of page tables")
+                .iter()
+                .map(|v| v.into_inner())
+                .collect();
+
+        let actual: Vec<PageTable> =
+            <[Unalign<PageTable>]>::ref_from_bytes(built_tables.as_slice())
+                .expect("page data is a valid list of page tables")
+                .iter()
+                .map(|v| v.into_inner())
+                .collect();
 
         compare_page_tables(&expected, &actual);
     }
