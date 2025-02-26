@@ -4648,7 +4648,48 @@ mod tests {
             Some(IgvmPlatformType::VSM_ISOLATION),
         )
     }
-    // Test SNP vp context
+
+    #[test]
+    fn test_snp_vp_context() {
+        let raw_header = IGVM_VHS_VP_CONTEXT {
+            gpa: 0x1234000.into(),
+            compatibility_mask: 0x1,
+            file_offset: 1234,
+            vp_index: 0xabcd,
+            reserved: 0,
+        };
+
+        let mut raw_header_bytes: [u8; 24] = [0; 24];
+        raw_header_bytes[..raw_header.as_bytes().len()].copy_from_slice(raw_header.as_bytes());
+
+        let mut vmsa = SevVmsa::new_box_zeroed().unwrap();
+        // Set a couple of random values so it's not just all 0s.
+        vmsa.cr2 = 42;
+        vmsa.ldtr.attrib = 92;
+
+        let mut file_data: Vec<u8> = vmsa.as_bytes().to_vec();
+        file_data.resize(PAGE_SIZE_4K.try_into().unwrap(), 0);
+
+        let header = IgvmDirectiveHeader::SnpVpContext {
+            gpa: 0x1234000,
+            compatibility_mask: 0x1,
+            vp_index: 0xabcd,
+            vmsa,
+        };
+
+        test_variable_header(
+            IgvmRevision::V2 {
+                arch: Arch::X64,
+                page_size: PAGE_SIZE_4K as u32,
+            },
+            header,
+            1234,
+            IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+            raw_header_bytes,
+            Some(file_data),
+            Some(IgvmPlatformType::SEV_SNP),
+        )
+    }
 
     // Test serialize and deserialize
 }
