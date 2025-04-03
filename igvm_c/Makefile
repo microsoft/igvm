@@ -27,7 +27,7 @@ VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.to
 
 .PHONY: install
 
-all: include/igvm.h $(TARGET_PATH)/dump_igvm test
+all: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm test
 
 $(TARGET_PATH)/libigvm.a:
 	$(CARGO) build --features $(FEATURES) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
@@ -38,7 +38,7 @@ $(TARGET_PATH)/libigvm_defs.rlib:
 $(TARGET_PATH)/test_data:
 	$(CARGO) build --manifest-path=$(IGVM_DIR)/igvm_c/test_data/Cargo.toml
 
-include/igvm.h: $(RUST_SOURCE)
+$(API_DIR)/include/igvm.h: $(RUST_SOURCE)
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm.toml $(IGVM_DIR)/igvm -o "$(API_DIR)/include/igvm.h"
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm_defs.toml $(IGVM_DIR)/igvm_defs -o "$(API_DIR)/include/igvm_defs.h"
 	$(API_DIR)/scripts/post_process.sh "$(API_DIR)/include"
