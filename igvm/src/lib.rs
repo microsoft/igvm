@@ -120,7 +120,7 @@ fn append_header<T: IntoBytes + Immutable + KnownLayout>(
             .expect("header data must fit in u32"),
     };
 
-    let align_up_iter = std::iter::repeat(&0u8).take(align_8(header.len()) - header.len());
+    let align_up_iter = std::iter::repeat_n(&0u8, align_8(header.len()) - header.len());
 
     variable_headers.extend_from_slice(fixed_header.as_bytes());
     variable_headers.extend_from_slice(header);
@@ -1055,7 +1055,7 @@ impl IgvmDirectiveHeader {
                     assert!(data.len() as u64 <= PAGE_SIZE_4K);
 
                     let align_up_iter =
-                        std::iter::repeat(&0u8).take(PAGE_SIZE_4K as usize - data.len());
+                        std::iter::repeat_n(&0u8, PAGE_SIZE_4K as usize - data.len());
                     let data: Vec<u8> = data.iter().chain(align_up_iter).copied().collect();
                     file_data.write_file_data(&data)
                 };
@@ -1089,8 +1089,8 @@ impl IgvmDirectiveHeader {
                     // Pad data out to number_of_bytes if smaller.
                     assert!(initial_data.len() as u64 <= *number_of_bytes);
 
-                    let align_up_iter = std::iter::repeat(&0u8)
-                        .take(*number_of_bytes as usize - initial_data.len());
+                    let align_up_iter =
+                        std::iter::repeat_n(&0u8, *number_of_bytes as usize - initial_data.len());
                     let data: Vec<u8> = initial_data.iter().chain(align_up_iter).copied().collect();
                     file_data.write_file_data(&data)
                 };
@@ -1212,7 +1212,7 @@ impl IgvmDirectiveHeader {
 
                 // Pad file data to 4K.
                 let align_up_iter =
-                    std::iter::repeat(&0u8).take(PAGE_SIZE_4K as usize - vmsa.as_bytes().len());
+                    std::iter::repeat_n(&0u8, PAGE_SIZE_4K as usize - vmsa.as_bytes().len());
                 let data: Vec<u8> = vmsa
                     .as_bytes()
                     .iter()
@@ -1242,7 +1242,7 @@ impl IgvmDirectiveHeader {
             } => {
                 // Pad file data to 4K.
                 let align_up_iter =
-                    std::iter::repeat(&0u8).take(PAGE_SIZE_4K as usize - context.as_bytes().len());
+                    std::iter::repeat_n(&0u8, PAGE_SIZE_4K as usize - context.as_bytes().len());
                 let data: Vec<u8> = context
                     .as_bytes()
                     .iter()
