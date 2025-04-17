@@ -30,13 +30,13 @@ VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.to
 all: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm test
 
 $(TARGET_PATH)/libigvm.a:
-	$(CARGO) build --features $(FEATURES) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
+	$(CARGO) build --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 
 $(TARGET_PATH)/libigvm_defs.rlib:
-	$(CARGO) build --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
+	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 
 $(TARGET_PATH)/test_data:
-	$(CARGO) build --manifest-path=$(IGVM_DIR)/igvm_c/test_data/Cargo.toml
+	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_c/test_data/Cargo.toml
 
 $(API_DIR)/include/igvm.h: $(RUST_SOURCE)
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm.toml $(IGVM_DIR)/igvm -o "$(API_DIR)/include/igvm.h"
@@ -54,11 +54,11 @@ $(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data
 
 test: $(TARGET_PATH)/igvm_test $(TARGET_PATH)/igvm.bin
 	$(TARGET_PATH)/igvm_test $(TARGET_PATH)/igvm.bin
-	$(CARGO) test --features $(FEATURES) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
+	$(CARGO) test --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 
 clean:
-	$(CARGO) clean --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
-	$(CARGO) clean --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
+	$(CARGO) clean $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
+	$(CARGO) clean $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 	rm -f $(API_DIR)/include/igvm.h $(API_DIR)/include/igvm_defs.h $(TARGET_PATH)/dump_igvm $(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
 
 install:
