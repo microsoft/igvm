@@ -6,17 +6,18 @@
 
 API_DIR:=$(realpath $(shell dirname $(firstword $(MAKEFILE_LIST))))
 IGVM_DIR := $(API_DIR)/..
+TARGET_DIR ?= target_c
 
 ifdef RELEASE
-TARGET_PATH="$(IGVM_DIR)/target_c/release"
+TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/release"
 else
-TARGET_PATH="$(IGVM_DIR)/target_c/debug"
+TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/debug"
 endif
 
 PREFIX ?= /usr
 DESTDIR ?= 
 
-CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/target_c cargo
+CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/$(TARGET_DIR) cargo
 
 FEATURES = "igvm-c"
 
