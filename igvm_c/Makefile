@@ -28,7 +28,9 @@ VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.to
 
 .PHONY: install
 
-all: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm test
+all: build test
+
+build: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm
 
 $(TARGET_PATH)/libigvm.a:
 	$(CARGO) build --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
