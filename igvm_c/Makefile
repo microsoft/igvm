@@ -15,7 +15,10 @@ TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/debug"
 endif
 
 PREFIX ?= /usr
-DESTDIR ?= 
+DESTDIR ?=
+
+CFLAGS ?= -g3 -O0
+LDFLAGS += -L $(TARGET_PATH)
 
 CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/$(TARGET_DIR) cargo
 
@@ -26,7 +29,7 @@ RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_
 # Determine igvm crate version from Cargo.toml
 VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.toml)
 
-.PHONY: install
+.PHONY: all build test clean install
 
 all: build test
 
@@ -47,10 +50,10 @@ $(API_DIR)/include/igvm.h: $(RUST_SOURCE)
 	$(API_DIR)/scripts/post_process.sh "$(API_DIR)/include"
 
 $(TARGET_PATH)/dump_igvm: $(API_DIR)/include/igvm.h $(API_DIR)/sample/dump_igvm.c $(TARGET_PATH)/libigvm.a
-	cc -g3 -O0 -I $(API_DIR) -L $(TARGET_PATH) -o $@ $^ -ligvm -ldl -pthread -lm -lutil -lrt
+	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $^ -ligvm -ldl -pthread -lutil -lrt $(LDFLAGS)
 
 $(TARGET_PATH)/igvm_test: $(API_DIR)/include/igvm.h $(API_DIR)/tests/igvm_test.c $(TARGET_PATH)/libigvm.a
-	cc -g3 -O0 -I $(API_DIR) -L $(TARGET_PATH) -o $@ $^ -ligvm -lcunit -ldl -pthread -lm -lutil -lrt
+	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $^ -ligvm -lcunit -ldl -pthread -lm -lutil -lrt $(LDFLAGS)
 
 $(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data
 	$(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
