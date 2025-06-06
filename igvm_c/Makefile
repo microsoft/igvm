@@ -29,7 +29,7 @@ RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_
 # Determine igvm crate version from Cargo.toml
 VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.toml)
 
-.PHONY: install
+.PHONY: all build test clean install
 
 all: build test
 
