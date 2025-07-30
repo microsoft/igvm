@@ -9,9 +9,9 @@ IGVM_DIR := $(API_DIR)/..
 TARGET_DIR ?= target_c
 
 ifdef RELEASE
-TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/release"
+TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/$(CARGO_BUILD_TARGET)/release"
 else
-TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/debug"
+TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/$(CARGO_BUILD_TARGET)/debug"
 endif
 
 PREFIX ?= /usr
