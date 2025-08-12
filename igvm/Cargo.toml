@@ -12,6 +12,10 @@ repository = "https://github.com/microsoft/igvm"
 keywords = ["virtualization"]
 categories = ["virtualization", "parser-implementations"]
 
+[package.metadata.capi.header]
+# cbindgen is handled from igvm_c/Makefile
+enabled = false
+
 [package.metadata.docs.rs]
 # Document all features
 all-features = true
@@ -40,4 +44,5 @@ static_assertions.workspace = true
 
 [features]
 default = []
+capi = ["igvm-c"]
 igvm-c = [] # Add exports that allow the library to be used from C
