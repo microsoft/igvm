@@ -8,12 +8,6 @@ API_DIR:=$(realpath $(shell dirname $(firstword $(MAKEFILE_LIST))))
 IGVM_DIR := $(API_DIR)/..
 TARGET_DIR ?= target_c
 
-ifdef RELEASE
-TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/$(CARGO_BUILD_TARGET)/release"
-else
-TARGET_PATH="$(IGVM_DIR)/$(TARGET_DIR)/$(CARGO_BUILD_TARGET)/debug"
-endif
-
 PREFIX ?= /usr
 DESTDIR ?=
 
@@ -21,8 +15,13 @@ CFLAGS ?= -g3 -O0
 LDFLAGS += -L $(TARGET_PATH)
 
 CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/$(TARGET_DIR) cargo
+CARGO_BUILD_HOST := $(shell $(CARGO) -Vv | sed -n 's,^host: ,,p')
 
 FEATURES = "igvm-c"
+PROFILE = $(if $(RELEASE),release,debug)
+
+TARGET_PATH = "$(IGVM_DIR)/$(TARGET_DIR)/$(CARGO_BUILD_TARGET)/$(PROFILE)"
+LIB_PATH = "$(IGVM_DIR)/$(TARGET_DIR)/$(or $(CARGO_BUILD_TARGET),$(CARGO_BUILD_HOST))/$(PROFILE)"
 
 RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_DIR)/igvm_defs/src/lib.rs
 LIBIGVM = $(LIB_PATH)/libigvm.a
@@ -37,7 +36,7 @@ all: build test
 build: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm
 
 $(LIBIGVM):
-	$(CARGO) build --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
+	$(CARGO) cbuild --prefix $(PREFIX) --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 
 $(TARGET_PATH)/libigvm_defs.rlib:
 	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
@@ -68,13 +67,9 @@ clean:
 	$(CARGO) clean $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 	rm -f $(API_DIR)/include/igvm.h $(API_DIR)/include/igvm_defs.h $(TARGET_PATH)/dump_igvm $(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
 
-install:
+install: build
 	mkdir -p $(DESTDIR)/$(PREFIX)/include/igvm
-	mkdir -p $(DESTDIR)/$(PREFIX)/lib64/pkgconfig
-	install -m 644 $(TARGET_PATH)/libigvm.a $(DESTDIR)/$(PREFIX)/lib64
 	install -m 644 $(IGVM_DIR)/igvm_c/include/* $(DESTDIR)/$(PREFIX)/include/igvm
+	$(CARGO) cinstall --destdir "$(DESTDIR)" --prefix "$(PREFIX)" --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 	mkdir -p $(DESTDIR)/$(PREFIX)/bin/
 	install -m 755 $(TARGET_PATH)/dump_igvm $(DESTDIR)/$(PREFIX)/bin/
-	VERSION=$(VERSION) PREFIX=$(PREFIX) envsubst '$$VERSION $$PREFIX' \
-				< $(IGVM_DIR)/igvm_c/igvm.pc.in \
-				> $(DESTDIR)/$(PREFIX)/lib64/pkgconfig/igvm.pc
