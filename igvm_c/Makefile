@@ -12,7 +12,6 @@ PREFIX ?= /usr
 DESTDIR ?=
 
 CFLAGS ?= -g3 -O0
-LDFLAGS += -L $(TARGET_PATH)
 
 CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/$(TARGET_DIR) cargo
 CARGO_BUILD_HOST := $(shell $(CARGO) -Vv | sed -n 's,^host: ,,p')
@@ -25,6 +24,9 @@ LIB_PATH = "$(IGVM_DIR)/$(TARGET_DIR)/$(or $(CARGO_BUILD_TARGET),$(CARGO_BUILD_H
 
 RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_DIR)/igvm_defs/src/lib.rs
 LIBIGVM = $(LIB_PATH)/libigvm.a
+UNINSTALLED_PC = $(LIB_PATH)/igvm-uninstalled.pc
+IGVM_LIBS = $(shell pkg-config --libs --static $(UNINSTALLED_PC))
+IGVM_LIBS_STATIC = $(subst $(IGVM_LIBS), -ligvm, $(LIBIGVM))
 
 # Determine igvm crate version from Cargo.toml
 VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.toml)
@@ -50,10 +52,10 @@ $(API_DIR)/include/igvm.h: $(RUST_SOURCE)
 	$(API_DIR)/scripts/post_process.sh "$(API_DIR)/include"
 
 $(TARGET_PATH)/dump_igvm: $(API_DIR)/sample/dump_igvm.c $(API_DIR)/include/igvm.h $(LIBIGVM)
-	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $< $(LIBIGVM) -ldl -pthread -lutil -lrt $(LDFLAGS)
+	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $< $(IGVM_LIBS) $(LDFLAGS)
 
 $(TARGET_PATH)/igvm_test: $(API_DIR)/tests/igvm_test.c $(API_DIR)/include/igvm.h $(LIBIGVM)
-	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $< $(LIBIGVM) -lcunit -ldl -pthread -lutil -lrt $(LDFLAGS)
+	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $< -lcunit $(IGVM_LIBS_STATIC) $(LDFLAGS)
 
 $(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data
 	$(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
