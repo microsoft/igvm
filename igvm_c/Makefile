@@ -7,6 +7,7 @@
 API_DIR:=$(realpath $(shell dirname $(firstword $(MAKEFILE_LIST))))
 IGVM_DIR := $(API_DIR)/..
 TARGET_DIR ?= target_c
+EXE =
 
 PREFIX ?= /usr
 DESTDIR ?=
@@ -35,7 +36,7 @@ VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.to
 
 all: build test
 
-build: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm
+build: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm$(EXE)
 
 $(LIBIGVM):
 	$(CARGO) cbuild --prefix $(PREFIX) --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
@@ -43,7 +44,7 @@ $(LIBIGVM):
 $(TARGET_PATH)/libigvm_defs.rlib:
 	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 
-$(TARGET_PATH)/test_data:
+$(TARGET_PATH)/test_data$(EXE):
 	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_c/test_data/Cargo.toml
 
 $(API_DIR)/include/igvm.h: $(RUST_SOURCE)
@@ -51,27 +52,27 @@ $(API_DIR)/include/igvm.h: $(RUST_SOURCE)
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm_defs.toml $(IGVM_DIR)/igvm_defs -o "$(API_DIR)/include/igvm_defs.h"
 	$(API_DIR)/scripts/post_process.sh "$(API_DIR)/include"
 
-$(TARGET_PATH)/dump_igvm: $(API_DIR)/sample/dump_igvm.c $(API_DIR)/include/igvm.h $(LIBIGVM)
+$(TARGET_PATH)/dump_igvm$(EXE): $(API_DIR)/sample/dump_igvm.c $(API_DIR)/include/igvm.h $(LIBIGVM)
 	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $< $(IGVM_LIBS) $(LDFLAGS)
 
-$(TARGET_PATH)/igvm_test: $(API_DIR)/tests/igvm_test.c $(API_DIR)/include/igvm.h $(LIBIGVM)
+$(TARGET_PATH)/igvm_test$(EXE): $(API_DIR)/tests/igvm_test.c $(API_DIR)/include/igvm.h $(LIBIGVM)
 	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $< -lcunit $(IGVM_LIBS_STATIC) $(LDFLAGS)
 
-$(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data
+$(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data$(EXE)
 	$(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
 
-test: $(TARGET_PATH)/igvm_test $(TARGET_PATH)/igvm.bin
+test: $(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
 	$(TARGET_PATH)/igvm_test $(TARGET_PATH)/igvm.bin
 	$(CARGO) test --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 
 clean:
 	$(CARGO) clean $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 	$(CARGO) clean $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
-	rm -f $(API_DIR)/include/igvm.h $(API_DIR)/include/igvm_defs.h $(TARGET_PATH)/dump_igvm $(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
+	rm -f $(API_DIR)/include/igvm.h $(API_DIR)/include/igvm_defs.h $(TARGET_PATH)/dump_igvm$(EXE) $(TARGET_PATH)/test_data$(EXE) $(TARGET_PATH)/igvm.bin
 
 install: build
 	mkdir -p $(DESTDIR)/$(PREFIX)/include/igvm
 	install -m 644 $(IGVM_DIR)/igvm_c/include/* $(DESTDIR)/$(PREFIX)/include/igvm
 	$(CARGO) cinstall --destdir "$(DESTDIR)" --prefix "$(PREFIX)" --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 	mkdir -p $(DESTDIR)/$(PREFIX)/bin/
-	install -m 755 $(TARGET_PATH)/dump_igvm $(DESTDIR)/$(PREFIX)/bin/
+	install -m 755 $(TARGET_PATH)/dump_igvm$(EXE) $(DESTDIR)/$(PREFIX)/bin/
