@@ -59,10 +59,10 @@ $(TARGET_PATH)/igvm_test$(EXE): $(API_DIR)/tests/igvm_test.c $(API_DIR)/include/
 	$(CC) $(CFLAGS) -I $(API_DIR) -o $@ $< -lcunit $(IGVM_LIBS_STATIC) $(LDFLAGS)
 
 $(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data$(EXE)
-	$(TARGET_PATH)/test_data $(TARGET_PATH)/igvm.bin
+	$(TARGET_PATH)/test_data$(EXE) $(TARGET_PATH)/igvm.bin
 
 test: $(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
-	$(TARGET_PATH)/igvm_test $(TARGET_PATH)/igvm.bin
+	$(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
 	$(CARGO) test --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 
 clean:
