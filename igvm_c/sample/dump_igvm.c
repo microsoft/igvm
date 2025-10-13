@@ -212,6 +212,7 @@ static void igvm_dump_variable_header(IGVM_VHS_VARIABLE_HEADER *header)
     case IGVM_VHT_VP_COUNT_PARAMETER:
     case IGVM_VHT_SRAT:
     case IGVM_VHT_MADT:
+    case IGVM_VHT_DEVICE_TREE:
     case IGVM_VHT_MMIO_RANGES:
     case IGVM_VHT_MEMORY_MAP:
     case IGVM_VHT_COMMAND_LINE:
