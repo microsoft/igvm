@@ -64,6 +64,8 @@ pub enum IsolationType {
     Sev,
     /// This guest is isolated with SEV-ES (physical or emulated).
     SevEs,
+    /// This guest is isolated with Cca (physical or emulated).
+    Cca,
 }
 
 impl From<IsolationType> for igvm_defs::IgvmPlatformType {
@@ -75,6 +77,7 @@ impl From<IsolationType> for igvm_defs::IgvmPlatformType {
             IsolationType::Tdx => IgvmPlatformType::TDX,
             IsolationType::Sev => IgvmPlatformType::SEV,
             IsolationType::SevEs => IgvmPlatformType::SEV_ES,
+            IsolationType::Cca => IgvmPlatformType::CCA,
         }
     }
 }
@@ -261,6 +264,11 @@ impl IgvmPlatformHeader {
                             return Err(BinaryHeaderError::InvalidPlatformVersion);
                         }
                         // TODO: shared gpa boundary req?
+                    }
+                    IgvmPlatformType::CCA => {
+                        if info.platform_version != IGVM_CCA_PLATFORM_VERSION {
+                            return Err(BinaryHeaderError::InvalidPlatformVersion);
+                        }
                     }
                     _ => {
                         return Err(BinaryHeaderError::InvalidPlatformType);
@@ -1783,7 +1791,7 @@ impl IgvmDirectiveHeader {
                     .ok_or(BinaryHeaderError::InvalidVariableHeaderSize)?;
 
                 match compatibility_mask_to_platforms(header.compatibility_mask) {
-                    Some(IgvmPlatformType::VSM_ISOLATION) => {
+                    Some(IgvmPlatformType::VSM_ISOLATION) | Some(IgvmPlatformType::CCA) => {
                         // First read the VbsVpContextHeader at file offset
                         let start = (header.file_offset - file_data_start) as usize;
                         let (VbsVpContextHeader { register_count }, remaining_data) =
@@ -2368,6 +2376,14 @@ impl IgvmFile {
                         | IgvmPlatformType::SEV
                         | IgvmPlatformType::SEV_ES => {
                             if revision.arch() != Arch::X64 {
+                                return Err(Error::PlatformArchUnsupported {
+                                    arch: revision.arch(),
+                                    platform: info.platform_type,
+                                });
+                            }
+                        }
+                        IgvmPlatformType::CCA => {
+                            if revision.arch() != Arch::AArch64 {
                                 return Err(Error::PlatformArchUnsupported {
                                     arch: revision.arch(),
                                     platform: info.platform_type,
@@ -3463,6 +3479,13 @@ mod tests {
         })
     }
 
+    fn new_guest_policy(policy: u64, compatibility_mask: u32) -> IgvmInitializationHeader {
+        IgvmInitializationHeader::GuestPolicy {
+            policy,
+            compatibility_mask,
+        }
+    }
+
     fn new_page_data(page: u64, compatibility_mask: u32, data: &[u8]) -> IgvmDirectiveHeader {
         IgvmDirectiveHeader::PageData {
             gpa: page * PAGE_SIZE_4K,
@@ -3605,6 +3628,46 @@ mod tests {
                 },
                 platform_headers: vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
                 initialization_headers: vec![],
+                directive_headers: vec![
+                    new_page_data(0, 1, &data1),
+                    new_page_data(1, 1, &data2),
+                    new_page_data(2, 1, &data3),
+                    new_page_data(4, 1, &data4),
+                    new_page_data(10, 1, &data1),
+                    new_page_data(11, 1, &data2),
+                    new_page_data(12, 1, &data3),
+                    new_page_data(14, 1, &data4),
+                    new_parameter_area(0),
+                    new_parameter_usage(0),
+                    new_parameter_insert(20, 0, 1),
+                    IgvmDirectiveHeader::AArch64VbsVpContext {
+                        vtl: Vtl::Vtl0,
+                        registers: vec![AArch64Register::X0(0x1234)],
+                        compatibility_mask: 0x1,
+                    },
+                ],
+            };
+            let mut binary_file = Vec::new();
+            file.serialize(&mut binary_file).unwrap();
+
+            let deserialized_binary_file = IgvmFile::new_from_binary(&binary_file, None).unwrap();
+            assert_igvm_equal(&file, &deserialized_binary_file);
+        }
+
+        #[test]
+        fn test_basic_v2_aarch64_cca() {
+            let data1 = vec![1; PAGE_SIZE_4K as usize];
+            let data2 = vec![2; PAGE_SIZE_4K as usize];
+            let data3 = vec![3; PAGE_SIZE_4K as usize];
+            let data4 = vec![4; PAGE_SIZE_4K as usize];
+            let file = IgvmFile {
+                revision: IgvmRevision::V2 {
+                    arch: Arch::AArch64,
+                    page_size: PAGE_SIZE_4K as u32,
+                },
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::CCA)],
+                initialization_headers: vec![new_guest_policy((CcaHashAlgorithm::SHA512.0 as u64) << 1
+                                                               | (CcaLfaPolicy::LFA_ALLOW.0 as u64) << 9, 0x1)],
                 directive_headers: vec![
                     new_page_data(0, 1, &data1),
                     new_page_data(1, 1, &data2),
