@@ -1057,6 +1057,32 @@ pub struct VbsVpContextRegister {
 
 const_assert_eq!(size_of::<VbsVpContextRegister>(), 0x20);
 
+/// Format of [`IGVM_VHS_VP_CONTEXT`] file data for a native ARM64 CCA image.
+/// Registers not specified here are initialized to their architectural
+/// reset values.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
+pub struct IgvmVpContextAArch64Cca {
+    /// X0 register.
+    pub x0: u64,
+    /// X1 register.
+    pub x1: u64,
+    /// X2 register.
+    pub x2: u64,
+    /// X3 register.
+    pub x3: u64,
+    /// X4 register.
+    pub x4: u64,
+    /// X5 register.
+    pub x5: u64,
+    /// X6 register.
+    pub x6: u64,
+    /// X7 register.
+    pub x7: u64,
+    /// Program counter.
+    pub pc: u64,
+}
+
 /// This structure describes memory the IGVM file expects to be present in the
 /// guest. This is a hint to the loader that the guest will not function without
 /// memory present at the specified range, and should terminate the load process

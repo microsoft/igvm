@@ -733,6 +733,11 @@ pub enum IgvmDirectiveHeader {
         registers: Vec<AArch64Register>,
         compatibility_mask: u32,
     },
+    AArch64CcaVpContext {
+        compatibility_mask: u32,
+        vp_index: u16,
+        context: Box<IgvmVpContextAArch64Cca>,
+    },
     ParameterInsert(IGVM_VHS_PARAMETER_INSERT),
     ErrorRange {
         gpa: u64,
@@ -978,6 +983,7 @@ impl IgvmDirectiveHeader {
             IgvmDirectiveHeader::X64NativeVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::X64VbsVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::AArch64VbsVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
+            IgvmDirectiveHeader::AArch64CcaVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::ParameterInsert(param) => size_of_val(param),
             IgvmDirectiveHeader::ErrorRange { .. } => size_of::<IGVM_VHS_ERROR_RANGE>(),
             IgvmDirectiveHeader::SnpIdBlock { .. } => size_of::<IGVM_VHS_SNP_ID_BLOCK>(),
@@ -1016,6 +1022,9 @@ impl IgvmDirectiveHeader {
                 IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
             }
             IgvmDirectiveHeader::AArch64VbsVpContext { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
+            }
+            IgvmDirectiveHeader::AArch64CcaVpContext { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
             }
             IgvmDirectiveHeader::ParameterInsert(_) => {
@@ -1273,6 +1282,36 @@ impl IgvmDirectiveHeader {
                     variable_headers,
                 );
             }
+            IgvmDirectiveHeader::AArch64CcaVpContext {
+                compatibility_mask,
+                vp_index,
+                context,
+            } => {
+                // Pad file data to 4K.
+                let align_up_iter =
+                    std::iter::repeat_n(&0u8, PAGE_SIZE_4K as usize - context.as_bytes().len());
+                let data: Vec<u8> = context
+                    .as_bytes()
+                    .iter()
+                    .chain(align_up_iter)
+                    .copied()
+                    .collect();
+                let file_offset = file_data.write_file_data(&data);
+
+                let info = IGVM_VHS_VP_CONTEXT {
+                    gpa: 0.into(),
+                    compatibility_mask: *compatibility_mask,
+                    file_offset,
+                    vp_index: *vp_index,
+                    reserved: 0,
+                };
+
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+                    variable_headers,
+                );
+            }
             IgvmDirectiveHeader::X64VbsVpContext {
                 vtl,
                 registers,
@@ -1468,6 +1507,9 @@ impl IgvmDirectiveHeader {
             AArch64VbsVpContext {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            AArch64CcaVpContext {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
             ParameterInsert(info) => Some(info.compatibility_mask),
             ErrorRange {
                 compatibility_mask, ..
@@ -1514,6 +1556,9 @@ impl IgvmDirectiveHeader {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
             AArch64VbsVpContext {
+                compatibility_mask, ..
+            } => Some(compatibility_mask),
+            AArch64CcaVpContext {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
             ParameterInsert(info) => Some(&mut info.compatibility_mask),
@@ -1672,6 +1717,11 @@ impl IgvmDirectiveHeader {
                 registers: _,
                 compatibility_mask: _,
             } => {}
+            IgvmDirectiveHeader::AArch64CcaVpContext {
+                compatibility_mask: _,
+                vp_index: _,
+                context: _,
+            } => {}
             IgvmDirectiveHeader::ParameterInsert(param) => {
                 if param.gpa % PAGE_SIZE_4K != 0 {
                     return Err(BinaryHeaderError::UnalignedAddress(param.gpa));
@@ -1791,7 +1841,7 @@ impl IgvmDirectiveHeader {
                     .ok_or(BinaryHeaderError::InvalidVariableHeaderSize)?;
 
                 match compatibility_mask_to_platforms(header.compatibility_mask) {
-                    Some(IgvmPlatformType::VSM_ISOLATION) | Some(IgvmPlatformType::CCA) => {
+                    Some(IgvmPlatformType::VSM_ISOLATION) => {
                         // First read the VbsVpContextHeader at file offset
                         let start = (header.file_offset - file_data_start) as usize;
                         let (VbsVpContextHeader { register_count }, remaining_data) =
@@ -1908,6 +1958,35 @@ impl IgvmDirectiveHeader {
                         }
 
                         IgvmDirectiveHeader::X64NativeVpContext {
+                            compatibility_mask: header.compatibility_mask,
+                            vp_index: header.vp_index,
+                            context,
+                        }
+                    }
+                    Some(IgvmPlatformType::CCA) => {
+                        // Read the context which is stored as 4K file data.
+                        let start = (header.file_offset - file_data_start) as usize;
+                        if file_data.len() < start {
+                            return Err(BinaryHeaderError::InvalidDataSize);
+                        }
+
+                        let data = file_data
+                            .get(start..)
+                            .and_then(|x| x.get(..PAGE_SIZE_4K as usize))
+                            .ok_or(BinaryHeaderError::InvalidDataSize)?;
+
+                        // Copy the context bytes into the context structure,
+                        // and validate the remaining bytes are 0.
+                        // todo: zerocopy: as of 0.8, can recover from allocation failure
+                        let mut context = IgvmVpContextAArch64Cca::new_box_zeroed().unwrap();
+                        let (context_slice, remaining) =
+                            data.split_at(size_of::<IgvmVpContextAArch64Cca>());
+                        context.as_mut_bytes().copy_from_slice(context_slice);
+                        if remaining.iter().any(|b| *b != 0) {
+                            return Err(BinaryHeaderError::InvalidContext);
+                        }
+
+                        IgvmDirectiveHeader::AArch64CcaVpContext {
                             compatibility_mask: header.compatibility_mask,
                             vp_index: header.vp_index,
                             context,
@@ -2645,6 +2724,18 @@ impl IgvmFile {
                             && ident.vtl == *vtl)
                     })
                 }
+                IgvmDirectiveHeader::AArch64CcaVpContext {
+                    compatibility_mask: _,
+                    context: _,
+                    vp_index: _,
+                } => {
+                    if revision.arch() != Arch::AArch64 {
+                        return Err(Error::InvalidHeaderArch {
+                            arch: revision.arch(),
+                            header_type: "AArch64CcaVpContext".into(),
+                        });
+                    }
+                }
                 IgvmDirectiveHeader::ParameterInsert(info) => {
                     match parameter_areas.get_mut(&info.parameter_area_index) {
                         Some(state) if *state == ParameterAreaState::Allocated => {
@@ -3366,7 +3457,8 @@ impl IgvmFile {
                 | SnpIdBlock { .. }
                 | VbsMeasurement { .. }
                 | X64VbsVpContext { .. }
-                | AArch64VbsVpContext { .. } => {}
+                | AArch64VbsVpContext { .. }
+                | AArch64CcaVpContext { .. } => {}
                 ParameterArea {
                     parameter_area_index,
                     ..
@@ -3616,7 +3708,7 @@ mod tests {
         }
 
         #[test]
-        fn test_basic_v2_aarch64() {
+        fn test_basic_v2_aarch64_vbs() {
             let data1 = vec![1; PAGE_SIZE_4K as usize];
             let data2 = vec![2; PAGE_SIZE_4K as usize];
             let data3 = vec![3; PAGE_SIZE_4K as usize];
@@ -3660,6 +3752,7 @@ mod tests {
             let data2 = vec![2; PAGE_SIZE_4K as usize];
             let data3 = vec![3; PAGE_SIZE_4K as usize];
             let data4 = vec![4; PAGE_SIZE_4K as usize];
+            let context = IgvmVpContextAArch64Cca::new_box_zeroed().unwrap();
             let file = IgvmFile {
                 revision: IgvmRevision::V2 {
                     arch: Arch::AArch64,
@@ -3680,10 +3773,10 @@ mod tests {
                     new_parameter_area(0),
                     new_parameter_usage(0),
                     new_parameter_insert(20, 0, 1),
-                    IgvmDirectiveHeader::AArch64VbsVpContext {
-                        vtl: Vtl::Vtl0,
-                        registers: vec![AArch64Register::X0(0x1234)],
+                    IgvmDirectiveHeader::AArch64CcaVpContext {
                         compatibility_mask: 0x1,
+                        vp_index: 0xabcd,
+                        context,
                     },
                 ],
             };
