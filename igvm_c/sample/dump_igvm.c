@@ -256,42 +256,29 @@ static void igvm_dump_variable_header(IGVM_VHS_VARIABLE_HEADER *header)
     printf("\n");
 }
 
-static void igvm_dump_fixed_header(IGVM_FIXED_HEADER *header)
-{
-    printf("IGVM_FIXED_HEADER:\n");
-    printf("  Magic: 0x%08X\n", header->magic);
-    printf("  FormatVersion: 0x%08X\n", header->format_version);
-    printf("  VariableHeaderOffset: 0x%08X\n",
-           header->variable_header_offset);
-    printf("  VariableHeaderSize: 0x%08X\n", header->variable_header_size);
-    printf("  TotalFileSize: 0x%08X\n", header->total_file_size);
-    printf("  Checksum: 0x%08X\n", header->checksum);
-    printf("\n");
-}
-
 static int dump_igvm(uint8_t* igvm_buf, unsigned long igvm_length)
 {
     IgvmHandle igvm;
     if ((igvm = igvm_new_from_binary(igvm_buf, igvm_length)) < 0) {
-        printf("Failed to parse IGVM file. Error code: %ld\n", igvm);
+        printf("Failed to parse IGVM file. Error code: %d\n", igvm);
         return 1;
     }
 
     for (long section = 0; section <= IGVM_HEADER_SECTION_DIRECTIVE; ++section) {
         int32_t count = igvm_header_count(igvm, (IgvmHeaderSection)section);
         printf("----------------------------------------------------------\n"
-               "%s count = %ld\n\n",
+               "%s count = %d\n\n",
                section_name[section], count);
-        
+
         for (long i = 0; i < count; ++i) {
             IgvmVariableHeaderType typ = igvm_get_header_type(igvm, section, i);
             if (typ > 0) {
                 IgvmHandle header_handle;
                 IgvmHandle header_data;
-                
+
                 header_handle = igvm_get_header(igvm, section, i);
                 if (header_handle < 0) {
-                    printf("Invalid header (%ld)\n", header_handle);
+                    printf("Invalid header (%d)\n", header_handle);
                     return 1;
                 }
                 igvm_dump_variable_header((IGVM_VHS_VARIABLE_HEADER*)igvm_get_buffer(igvm, header_handle));
@@ -300,8 +287,8 @@ static int dump_igvm(uint8_t* igvm_buf, unsigned long igvm_length)
                 /* Do the same for any associated file data */
                 header_data = igvm_get_header_data(igvm, section, i);
                 if (header_data > 0) {
-                    uint32_t filedata_length = igvm_get_buffer_size(igvm, header_data);
-                    printf("Got %u bytes of file data:\n", filedata_length);
+                    int32_t filedata_length = igvm_get_buffer_size(igvm, header_data);
+                    printf("Got %d bytes of file data:\n", filedata_length);
                     hexdump(igvm_get_buffer(igvm, header_data), (filedata_length > hex_context) ? hex_context : filedata_length, 32, 0);
                     igvm_free_buffer(igvm, header_data);
                 }
