@@ -12,7 +12,7 @@ EXE =
 PREFIX ?= /usr
 DESTDIR ?=
 
-CFLAGS ?= -g3 -O0
+CFLAGS ?= -g3 -O0 -Wall -Wextra
 
 CARGO=CARGO_TARGET_DIR=$(IGVM_DIR)/$(TARGET_DIR) cargo
 CARGO_BUILD_HOST := $(shell $(CARGO) -Vv | sed -n 's,^host: ,,p')
