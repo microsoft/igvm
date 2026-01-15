@@ -23,7 +23,6 @@ void test_valid_igvm(void) {
 }
 
 void test_invalid_fixed_header(void) {
-    IgvmHandle igvm;
     CU_ASSERT_EQUAL(igvm_new_from_binary(invalid_igvm_buf, sizeof(invalid_igvm_buf)), IGVMAPI_INVALID_FIXED_HEADER);
 }
 
@@ -194,7 +193,6 @@ void test_associated_data(void) {
 
 void test_no_associated_data(void) {
     IgvmHandle igvm;
-    uint32_t data_length = 0;
 
     igvm = igvm_new_from_binary(igvm_buf, igvm_buf_length);
     CU_ASSERT(igvm > 0);
