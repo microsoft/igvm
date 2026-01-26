@@ -248,7 +248,7 @@ pub enum IgvmVariableHeaderType {
     /// A page table relocation region described by
     /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`].
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
-    /// A page table relocation region described by
+    /// TDX launch time configurations as described by
     /// [`IGVM_VHS_TD_INFO`].
     IGVM_VHT_TD_INFO = 0x104,
 
@@ -657,10 +657,10 @@ pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
 /// attestation will fail.
 ///
 /// Only supported on TDX platforms.
-#[bitfield(u64)]
+#[repr(C)]
 #[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_TD_INFO {
-    // XFAM value
+    /// XFAM for CPU extended features setting.
     pub xfam: u64,
 }
 

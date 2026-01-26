@@ -344,6 +344,10 @@ pub enum IgvmInitializationHeader {
         vp_index: u16,
         vtl: Vtl,
     },
+    /// Represents an [IGVM_VHS_TD_INFO].
+    TdInfo {
+        xfam: u64,
+    },
 }
 
 impl IgvmInitializationHeader {
@@ -662,6 +666,19 @@ impl IgvmInitializationHeader {
                 append_header(
                     &info,
                     IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION,
+                    variable_headers,
+                );
+            }
+            IgvmInitializationHeader::TdInfo {
+                xfam,
+            } => {
+                let info = IGVM_VHS_TD_INFO {
+                    xfam: *xfam
+                };
+
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_TD_INFO,
                     variable_headers,
                 );
             }
