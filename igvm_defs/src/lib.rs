@@ -658,8 +658,12 @@ pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
 ///
 /// Only supported on TDX platforms.
 #[repr(C)]
-#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_TD_INFO {
+    /// Compatibility mask.
+    pub compatibility_mask: u32,
+    /// Reserved, must be zero.
+    pub reserved: u32,
     /// XFAM for CPU extended features setting.
     pub xfam: u64,
 }

@@ -346,6 +346,7 @@ pub enum IgvmInitializationHeader {
     },
     /// Represents an [IGVM_VHS_TD_INFO].
     TdInfo {
+        compatibility_mask: u32,
         xfam: u64,
     },
 }
@@ -360,6 +361,9 @@ impl IgvmInitializationHeader {
             }
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 size_of::<IGVM_VHS_PAGE_TABLE_RELOCATION>()
+            }
+            IgvmInitializationHeader::TdInfo { .. } => {
+                size_of::<IGVM_VHS_TD_INFO>()
             }
         };
 
@@ -379,6 +383,9 @@ impl IgvmInitializationHeader {
             }
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION
+            }
+            IgvmInitializationHeader::TdInfo { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_TD_INFO
             }
         }
     }
@@ -456,6 +463,12 @@ impl IgvmInitializationHeader {
                     return Err(BinaryHeaderError::InvalidPageTableRegionSize);
                 }
 
+                Ok(())
+            }
+            IgvmInitializationHeader::TdInfo {
+                compatibility_mask: _,
+                xfam: _,
+            } => {
                 Ok(())
             }
         }
@@ -554,6 +567,24 @@ impl IgvmInitializationHeader {
                     vtl: vtl.try_into().map_err(|_| BinaryHeaderError::InvalidVtl)?,
                 }
             }
+            IgvmVariableHeaderType::IGVM_VHT_TD_INFO
+                if length == size_of::<IGVM_VHS_TD_INFO>() =>
+            {
+                let IGVM_VHS_TD_INFO {
+                    compatibility_mask,
+                    reserved,
+                    xfam,
+                } = read_header(&mut variable_headers)?;
+
+                if reserved != 0 {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+
+                IgvmInitializationHeader::TdInfo {
+                    compatibility_mask,
+                    xfam,
+                }
+            }
 
             _ => return Err(BinaryHeaderError::InvalidVariableHeaderType),
         };
@@ -574,6 +605,9 @@ impl IgvmInitializationHeader {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
             PageTableRelocationRegion {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
+            TdInfo {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
         }
@@ -670,9 +704,12 @@ impl IgvmInitializationHeader {
                 );
             }
             IgvmInitializationHeader::TdInfo {
+                compatibility_mask,
                 xfam,
             } => {
                 let info = IGVM_VHS_TD_INFO {
+                    compatibility_mask: *compatibility_mask,
+                    reserved: 0,
                     xfam: *xfam
                 };
 
@@ -3344,6 +3381,9 @@ impl IgvmFile {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
                 IgvmInitializationHeader::PageTableRelocationRegion {
+                    compatibility_mask, ..
+                } => fixup_mask(compatibility_mask),
+                IgvmInitializationHeader::TdInfo {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
             }
