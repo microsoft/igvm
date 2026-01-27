@@ -62,7 +62,7 @@ static char *igvm_type_to_text(uint32_t type)
     case IGVM_VHT_PAGE_TABLE_RELOCATION_REGION:
         return "IGVM_VHT_PAGE_TABLE_RELOCATION_REGION";
     case IGVM_VHT_TD_INFO:
-        return "IGVM_VHT_TD_INFO"
+        return "IGVM_VHT_TD_INFO";
     case IGVM_VHT_PARAMETER_AREA:
         return "IGVM_VHT_PARAMETER_AREA";
     case IGVM_VHT_PAGE_DATA:
@@ -170,6 +170,7 @@ static void igvm_dump_variable_header(IGVM_VHS_VARIABLE_HEADER *header)
             (IGVM_VHS_TD_INFO *)vh_data;
         printf("  CompatibilityMask: %08X\n", vhs->compatibility_mask);
         printf("  XFAM: %016lX\n", vhs->xfam);
+        break;
     }
     case IGVM_VHT_PARAMETER_AREA: {
         IGVM_VHS_PARAMETER_AREA *vhs =
