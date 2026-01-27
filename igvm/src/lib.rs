@@ -345,10 +345,7 @@ pub enum IgvmInitializationHeader {
         vtl: Vtl,
     },
     /// Represents an [IGVM_VHS_TD_INFO].
-    TdInfo {
-        compatibility_mask: u32,
-        xfam: u64,
-    },
+    TdInfo { compatibility_mask: u32, xfam: u64 },
 }
 
 impl IgvmInitializationHeader {
@@ -362,9 +359,7 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 size_of::<IGVM_VHS_PAGE_TABLE_RELOCATION>()
             }
-            IgvmInitializationHeader::TdInfo { .. } => {
-                size_of::<IGVM_VHS_TD_INFO>()
-            }
+            IgvmInitializationHeader::TdInfo { .. } => size_of::<IGVM_VHS_TD_INFO>(),
         };
 
         size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional
@@ -384,9 +379,7 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION
             }
-            IgvmInitializationHeader::TdInfo { .. } => {
-                IgvmVariableHeaderType::IGVM_VHT_TD_INFO
-            }
+            IgvmInitializationHeader::TdInfo { .. } => IgvmVariableHeaderType::IGVM_VHT_TD_INFO,
         }
     }
 
@@ -468,9 +461,7 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::TdInfo {
                 compatibility_mask: _,
                 xfam: _,
-            } => {
-                Ok(())
-            }
+            } => Ok(()),
         }
     }
 
@@ -567,9 +558,7 @@ impl IgvmInitializationHeader {
                     vtl: vtl.try_into().map_err(|_| BinaryHeaderError::InvalidVtl)?,
                 }
             }
-            IgvmVariableHeaderType::IGVM_VHT_TD_INFO
-                if length == size_of::<IGVM_VHS_TD_INFO>() =>
-            {
+            IgvmVariableHeaderType::IGVM_VHT_TD_INFO if length == size_of::<IGVM_VHS_TD_INFO>() => {
                 let IGVM_VHS_TD_INFO {
                     compatibility_mask,
                     reserved,
@@ -710,7 +699,7 @@ impl IgvmInitializationHeader {
                 let info = IGVM_VHS_TD_INFO {
                     compatibility_mask: *compatibility_mask,
                     reserved: 0,
-                    xfam: *xfam
+                    xfam: *xfam,
                 };
 
                 append_header(
