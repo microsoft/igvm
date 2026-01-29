@@ -7,7 +7,7 @@
 language = "C"
 
 header = """
-/* 
+/*
  * SPDX-License-Identifier: MIT OR Apache-2.0
  *
  * Copyright (c) 2023 SUSE LLC
@@ -52,30 +52,31 @@ typedef uint32_t IGVM_U32_LE;
 """
 
 [export]
-include = ["IGVM_FIXED_HEADER", 
+include = ["IGVM_FIXED_HEADER",
     "IGVM_VHS_VARIABLE_HEADER",
-    "IGVM_VHS_SUPPORTED_PLATFORM", 
-    "IGVM_VHS_GUEST_POLICY", 
-    "GuestPolicy", 
-    "SnpPolicy", 
-    "TdxPolicy", 
-    "IGVM_VHS_RELOCATABLE_REGION", 
-    "IGVM_VHS_PAGE_TABLE_RELOCATION", 
-    "IGVM_VHS_PARAMETER_AREA", 
-    "IGVM_VHS_PAGE_DATA", 
-    "IGVM_VHS_PARAMETER_INSERT", 
-    "IGVM_VHS_PARAMETER", 
-    "IGVM_VHS_VP_CONTEXT", 
-    "VbsVpContextHeader", 
-    "VbsVpContextRegister", 
-    "IGVM_VHS_REQUIRED_MEMORY", 
-    "IGVM_VHS_MEMORY_RANGE", 
-    "IGVM_VHS_MMIO_RANGES", 
-    "IGVM_VHS_SNP_ID_BLOCK_SIGNATURE", 
-    "IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY", 
-    "IGVM_VHS_SNP_ID_BLOCK", 
-    "IGVM_VHS_VBS_MEASUREMENT", 
-    "IGVM_VHS_MEMORY_MAP_ENTRY", 
+    "IGVM_VHS_SUPPORTED_PLATFORM",
+    "IGVM_VHS_GUEST_POLICY",
+    "GuestPolicy",
+    "SnpPolicy",
+    "TdxPolicy",
+    "IGVM_VHS_RELOCATABLE_REGION",
+    "IGVM_VHS_PAGE_TABLE_RELOCATION",
+    "IGVM_VHS_TD_INFO",
+    "IGVM_VHS_PARAMETER_AREA",
+    "IGVM_VHS_PAGE_DATA",
+    "IGVM_VHS_PARAMETER_INSERT",
+    "IGVM_VHS_PARAMETER",
+    "IGVM_VHS_VP_CONTEXT",
+    "VbsVpContextHeader",
+    "VbsVpContextRegister",
+    "IGVM_VHS_REQUIRED_MEMORY",
+    "IGVM_VHS_MEMORY_RANGE",
+    "IGVM_VHS_MMIO_RANGES",
+    "IGVM_VHS_SNP_ID_BLOCK_SIGNATURE",
+    "IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY",
+    "IGVM_VHS_SNP_ID_BLOCK",
+    "IGVM_VHS_VBS_MEASUREMENT",
+    "IGVM_VHS_MEMORY_MAP_ENTRY",
     "IGVM_VHS_ERROR_RANGE"]
 
 exclude = ["IgvmPageDataFlags", "RequiredMemoryFlags", "MemoryMapEntryFlags"]
