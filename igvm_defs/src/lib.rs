@@ -653,8 +653,8 @@ pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
 ///
 /// The XFAM (Extended Features Allowed Mask) value specifies a mask of CPU extended features
 /// that the TD is allowed to use. If the XFAM value is invalid or not supported by the host,
-/// the igvm file will fail to load. If the host overrides the specified XFAM value,
-/// attestation will fail.
+/// the host should fail to load the IGVM file. This value is reflected in attestation
+/// measurement.
 ///
 /// Only supported on TDX platforms.
 #[repr(C)]
