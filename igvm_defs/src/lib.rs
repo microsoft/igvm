@@ -649,12 +649,13 @@ pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
     pub used_size: u64,
 }
 
-/// Optional launch time configurations for VMs running on TDX platform.
+/// TDX VM launch time configurations that can be optionally specified.
+/// If not specified the host will use a default value. These values
+/// will be reflected in the VMs attestation measurement.
 ///
 /// The XFAM (Extended Features Allowed Mask) value specifies a mask of CPU extended features
 /// that the TD is allowed to use. If the XFAM value is invalid or not supported by the host,
-/// the host should fail to load the IGVM file. This value is reflected in attestation
-/// measurement.
+/// the host should fail to load the IGVM file.
 ///
 /// Only supported on TDX platforms.
 #[repr(C)]
