@@ -341,10 +341,10 @@ pub enum IgvmVariableHeaderType {
     /// specified by a structure of type [`IGVM_VHS_PARAMETER`].
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
     IGVM_VHT_ENVIRONMENT_INFO_PARAMETER = 0x313,
-    /// A Corim measurement structure described by [`IGVM_VHS_CORIM_MEASUREMENT`].
+    /// A Corim document structure described by [`IGVM_VHS_CORIM_DOCUMENT`].
     /// FIXME: should this be an init header to be early in the file?
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
-    IGVM_VHT_CORIM_MEASUREMENT = 0x314,
+    IGVM_VHT_CORIM_DOCUMENT = 0x314,
     /// A Corim signature structure described by [`IGVM_VHS_CORIM_SIGNATURE`].
     /// FIXME: should this be an init header to be early in the file?
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
@@ -1246,12 +1246,11 @@ pub enum VbsSigningAlgorithm {
     ECDSA_P384 = 0x1,
 }
 
-/// A structure defining a CoRIM CBOR payload for a given platform. TODO: rename
-/// to remove measurement?
+/// A structure defining a CoRIM CBOR document for a given platform.
 ///
-/// The payload described by this header is a CBOR CoRIM payload. There may only
+/// The data described by this header is a CBOR CoRIM document. There may only
 /// be one for a given platform. There may be an associated COSE_Sign1 structure
-/// wrapping this payload, see [`IGVM_VHS_CORIM_SIGNATURE`].
+/// for this document, see [`IGVM_VHS_CORIM_SIGNATURE`].
 ///
 /// The CoRIM payload must adhere to the following specifications for each
 /// platform:
@@ -1264,7 +1263,7 @@ pub enum VbsSigningAlgorithm {
 /// | ARM CCA | TBD |
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
-struct IGVM_VHS_CORIM_MEASUREMENT {
+struct IGVM_VHS_CORIM_DOCUMENT {
     /// Compatibility mask.
     pub compatibility_mask: u32,
     /// File offset for the CoRIM CBOR payload.
@@ -1275,18 +1274,14 @@ struct IGVM_VHS_CORIM_MEASUREMENT {
     pub reserved: u32,
 }
 
-/// This is a signed COSE_Sign1 structure wrapping a CoRIM CBOR payload for a
-/// given platform. The payload measured by this CBOR is described the
-/// corresponding [`IGVM_VHS_CORIM_MEASUREMENT`] structure. There cannot be this
-/// structure without that one.
+/// This structure descibres a  COSE_Sign1 structure for a detached CoRIM CBOR
+/// payload for a given platform. The payload measured by this CBOR is described
+/// the corresponding [`IGVM_VHS_CORIM_DOCUMENT`] structure. There cannot be
+/// this structure without that one.
 ///
-/// Note that a user may choose to create a single CBOR containing this
-/// COSE_Sign1 with the payload filled in by the other corim measurement
-/// structure.
-///
-/// The payload described by this header is a COSE_Sign1 structure described in
-/// section 4.2 in RFC https://datatracker.ietf.org/doc/draft-ietf-rats-corim/,
-/// which is a COSE_Sign1 structure with a CBOR corim payload.
+/// For more information on the structure described by this header, see the
+/// COSE_Sign1 structure described in section 4.2 in RFC
+/// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 struct IGVM_VHS_CORIM_SIGNATURE {
