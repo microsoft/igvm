@@ -126,7 +126,7 @@ fn append_header<T: IntoBytes + Immutable + KnownLayout>(
     variable_headers.extend_from_slice(header);
     variable_headers.extend(align_up_iter);
 
-    debug_assert!(variable_headers.len() % 8 == 0);
+    debug_assert!(variable_headers.len().is_multiple_of(8));
 }
 
 /// The serializer for headers with file data. This serializer deduplicates data
@@ -1635,7 +1635,7 @@ impl IgvmDirectiveHeader {
                     return Err(BinaryHeaderError::UnalignedAddress(*gpa));
                 }
 
-                if *number_of_bytes as u64 % PAGE_SIZE_4K != 0 {
+                if !(*number_of_bytes as u64).is_multiple_of(PAGE_SIZE_4K) {
                     return Err(BinaryHeaderError::UnalignedSize(*number_of_bytes as u64));
                 }
             }
@@ -2219,7 +2219,7 @@ impl IgvmRelocatableRegion {
         let start = relocation_base;
         let end = relocation_base + self.size;
 
-        if start % self.relocation_alignment != 0 {
+        if !start.is_multiple_of(self.relocation_alignment) {
             tracing::debug!("base is not aligned");
             false
         } else if start < self.minimum_relocation_gpa {
