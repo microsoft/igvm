@@ -1263,7 +1263,7 @@ pub enum VbsSigningAlgorithm {
 /// | ARM CCA | TBD |
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
-struct IGVM_VHS_CORIM_DOCUMENT {
+pub struct IGVM_VHS_CORIM_DOCUMENT {
     /// Compatibility mask.
     pub compatibility_mask: u32,
     /// File offset for the CoRIM CBOR payload.
@@ -1276,15 +1276,15 @@ struct IGVM_VHS_CORIM_DOCUMENT {
 
 /// This structure descibres a  COSE_Sign1 structure for a detached CoRIM CBOR
 /// payload for a given platform. The payload measured by this CBOR is described
-/// the corresponding [`IGVM_VHS_CORIM_DOCUMENT`] structure. There cannot be
-/// this structure without that one.
+/// the corresponding [`IGVM_VHS_CORIM_DOCUMENT`] structure, which must be
+/// defined before this structure.
 ///
 /// For more information on the structure described by this header, see the
 /// COSE_Sign1 structure described in section 4.2 in RFC
 /// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
-struct IGVM_VHS_CORIM_SIGNATURE {
+pub struct IGVM_VHS_CORIM_SIGNATURE {
     /// Compatibility mask.
     pub compatibility_mask: u32,
     /// File offset for the COSE_Sign1 measurement payload.

@@ -760,6 +760,17 @@ pub enum IgvmDirectiveHeader {
         signature: Box<[u8; 256]>,
         public_key: Box<[u8; 512]>,
     },
+    CorimDocument {
+        compatibility_mask: u32,
+        // FUTURE: have the corim document in a typed structure, with the
+        // required per-plaform fields.
+        document: Vec<u8>,
+    },
+    CorimSignature {
+        compatibility_mask: u32,
+        // FUTURE: have the corim signature in a typed structure
+        signature: Vec<u8>,
+    },
 }
 
 impl fmt::Display for IgvmDirectiveHeader {
@@ -947,6 +958,12 @@ pub enum BinaryHeaderError {
     UnsupportedX64Register(#[from] registers::UnsupportedRegister<HvX64RegisterName>),
     #[error("unsupported AArch64 register")]
     UnsupportedAArch64Register(#[from] registers::UnsupportedRegister<HvArm64RegisterName>),
+    #[error("multiple corim documents for a given compatibility mask {0:x}")]
+    MultipleCorimDocuments(u32),
+    #[error("multiple corim signatures for a given compatibility mask {0:x}")]
+    MultipleCorimSignatures(u32),
+    #[error("corim document missing for compatibility mask {0:x} with corresponding signature")]
+    MissingCorimDocument(u32),
 }
 
 impl IgvmDirectiveHeader {
@@ -974,6 +991,8 @@ impl IgvmDirectiveHeader {
             IgvmDirectiveHeader::ErrorRange { .. } => size_of::<IGVM_VHS_ERROR_RANGE>(),
             IgvmDirectiveHeader::SnpIdBlock { .. } => size_of::<IGVM_VHS_SNP_ID_BLOCK>(),
             IgvmDirectiveHeader::VbsMeasurement { .. } => size_of::<IGVM_VHS_VBS_MEASUREMENT>(),
+            IgvmDirectiveHeader::CorimDocument { .. } => size_of::<IGVM_VHS_CORIM_DOCUMENT>(),
+            IgvmDirectiveHeader::CorimSignature { .. } => size_of::<IGVM_VHS_CORIM_SIGNATURE>(),
         };
 
         align_8(size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional)
@@ -1020,6 +1039,12 @@ impl IgvmDirectiveHeader {
             }
             IgvmDirectiveHeader::EnvironmentInfo(_) => {
                 IgvmVariableHeaderType::IGVM_VHT_ENVIRONMENT_INFO_PARAMETER
+            }
+            IgvmDirectiveHeader::CorimDocument { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
+            }
+            IgvmDirectiveHeader::CorimSignature { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE
             }
         }
     }
@@ -1421,6 +1446,48 @@ impl IgvmDirectiveHeader {
                     variable_headers,
                 )
             }
+            IgvmDirectiveHeader::CorimDocument {
+                compatibility_mask,
+                document,
+            } => {
+                let file_offset = file_data.write_file_data(document);
+
+                let corim_document = IGVM_VHS_CORIM_DOCUMENT {
+                    compatibility_mask: *compatibility_mask,
+                    reserved: 0,
+                    file_offset,
+                    size_bytes: document
+                        .len()
+                        .try_into()
+                        .expect("corim document size must fit in u32"),
+                };
+                append_header(
+                    &corim_document,
+                    IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT,
+                    variable_headers,
+                );
+            }
+            IgvmDirectiveHeader::CorimSignature {
+                compatibility_mask,
+                signature,
+            } => {
+                let file_offset = file_data.write_file_data(signature);
+
+                let corim_signature = IGVM_VHS_CORIM_SIGNATURE {
+                    compatibility_mask: *compatibility_mask,
+                    reserved: 0,
+                    file_offset,
+                    size_bytes: signature
+                        .len()
+                        .try_into()
+                        .expect("corim signature size must fit in u32"),
+                };
+                append_header(
+                    &corim_signature,
+                    IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE,
+                    variable_headers,
+                );
+            }
         }
 
         Ok(())
@@ -1470,6 +1537,12 @@ impl IgvmDirectiveHeader {
             VbsMeasurement {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            CorimDocument {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
+            CorimSignature {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
         }
     }
 
@@ -1516,6 +1589,12 @@ impl IgvmDirectiveHeader {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
             VbsMeasurement {
+                compatibility_mask, ..
+            } => Some(compatibility_mask),
+            CorimDocument {
+                compatibility_mask, ..
+            } => Some(compatibility_mask),
+            CorimSignature {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
         }
@@ -1675,10 +1754,17 @@ impl IgvmDirectiveHeader {
                     return Err(BinaryHeaderError::UnalignedAddress(*gpa));
                 }
             }
-            //TODO: validate SNP
+            // TODO: validate SNP
             IgvmDirectiveHeader::SnpIdBlock { .. } => {}
-            //TODO: validate VBS
+            // TODO: validate VBS
             IgvmDirectiveHeader::VbsMeasurement { .. } => {}
+            // TODO: validate CoRIM document has the minimum fields required
+            // described by the corresponding specification for that platform.
+            IgvmDirectiveHeader::CorimDocument { .. } => {}
+            // TODO: validate CoRIM signature has the right fields, and
+            // correctly signs the corresponding document. This requires crypto
+            // crates and might need to be gated behind a feature flag.
+            IgvmDirectiveHeader::CorimSignature { .. } => {}
         }
 
         Ok(())
@@ -2056,6 +2142,44 @@ impl IgvmDirectiveHeader {
                 if length == size_of::<IGVM_VHS_PARAMETER>() =>
             {
                 IgvmDirectiveHeader::DeviceTree(read_header(&mut variable_headers)?)
+            }
+            IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
+                if length == size_of::<IGVM_VHS_CORIM_DOCUMENT>() =>
+            {
+                let IGVM_VHS_CORIM_DOCUMENT {
+                    compatibility_mask,
+                    reserved,
+                    file_offset,
+                    size_bytes,
+                } = read_header(&mut variable_headers)?;
+
+                if reserved != 0 {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+
+                IgvmDirectiveHeader::CorimDocument {
+                    compatibility_mask,
+                    document: extract_file_data(file_offset, size_bytes as usize)?,
+                }
+            }
+            IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE
+                if length == size_of::<IGVM_VHS_CORIM_SIGNATURE>() =>
+            {
+                let IGVM_VHS_CORIM_SIGNATURE {
+                    compatibility_mask,
+                    reserved,
+                    file_offset,
+                    size_bytes,
+                } = read_header(&mut variable_headers)?;
+
+                if reserved != 0 {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+
+                IgvmDirectiveHeader::CorimSignature {
+                    compatibility_mask,
+                    signature: extract_file_data(file_offset, size_bytes as usize)?,
+                }
             }
             _ => return Err(BinaryHeaderError::InvalidVariableHeaderType),
         };
@@ -2538,6 +2662,14 @@ impl IgvmFile {
         }
         let mut parameter_areas: BTreeMap<u32, ParameterAreaState> = BTreeMap::new();
 
+        // Track which compatibility masks have had a corim document header,
+        // only one allowed per compatibility mask.
+        let mut corim_document_seen: [bool; 32] = [false; 32];
+
+        // Track which compatibility masks have a corim document signature, only
+        // one allowed per compatibility mask.
+        let mut corim_document_signature_seen: [bool; 32] = [false; 32];
+
         // TODO: validate parameter usage offset falls within parameter area size
 
         for header in directive_headers {
@@ -2652,6 +2784,52 @@ impl IgvmFile {
                 IgvmDirectiveHeader::ErrorRange { .. } => {} // TODO: Validate ErrorRange
                 IgvmDirectiveHeader::SnpIdBlock { .. } => {} // TODO: Validate Snp
                 IgvmDirectiveHeader::VbsMeasurement { .. } => {} // TODO: Validate Vbs
+                IgvmDirectiveHeader::CorimDocument {
+                    compatibility_mask, ..
+                } => {
+                    // Validate that there is at most 1 corim document header
+                    // for a given compatibility mask.
+                    for single_mask in extract_individual_masks(*compatibility_mask) {
+                        let mask_index = single_mask.trailing_zeros() as usize;
+                        if corim_document_seen[mask_index] {
+                            return Err(Error::InvalidBinaryDirectiveHeader(
+                                BinaryHeaderError::MultipleCorimDocuments(single_mask),
+                            ));
+                        }
+                        corim_document_seen[mask_index] = true;
+                    }
+
+                    // TODO: validate actual corim document is what is expected
+                    // for the given platform. Requires parsing the CBOR
+                    // payload.
+                }
+                IgvmDirectiveHeader::CorimSignature {
+                    compatibility_mask, ..
+                } => {
+                    // Validate that there is at most 1 corim document signature
+                    // for a given compatibility mask.
+                    for single_mask in extract_individual_masks(*compatibility_mask) {
+                        let mask_index = single_mask.trailing_zeros() as usize;
+
+                        if corim_document_signature_seen[mask_index] {
+                            return Err(Error::InvalidBinaryDirectiveHeader(
+                                BinaryHeaderError::MultipleCorimSignatures(single_mask),
+                            ));
+                        }
+                        corim_document_signature_seen[mask_index] = true;
+
+                        // There must be a corim document for this compatibility
+                        // mask, before this header.
+                        if !corim_document_seen[mask_index] {
+                            return Err(Error::InvalidBinaryDirectiveHeader(
+                                BinaryHeaderError::MissingCorimDocument(single_mask),
+                            ));
+                        }
+                    }
+
+                    // TODO: Validate signature is correct for the given corim
+                    // document.
+                }
             }
         }
 
@@ -3350,7 +3528,9 @@ impl IgvmFile {
                 | SnpIdBlock { .. }
                 | VbsMeasurement { .. }
                 | X64VbsVpContext { .. }
-                | AArch64VbsVpContext { .. } => {}
+                | AArch64VbsVpContext { .. }
+                | CorimDocument { .. }
+                | CorimSignature { .. } => {}
                 ParameterArea {
                     parameter_area_index,
                     ..
@@ -4691,5 +4871,5 @@ mod tests {
         )
     }
 
-    // Test serialize and deserialize
+    // Test corim header serialization and basic validation
 }
