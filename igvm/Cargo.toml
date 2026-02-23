@@ -14,7 +14,14 @@ categories = ["virtualization", "parser-implementations"]
 
 [package.metadata.capi.header]
 # cbindgen is handled from igvm_c/Makefile
-enabled = false
+generation = false
+
+[package.metadata.capi.pkg_config]
+# users include <igvm/igvm.h>, so let's strip igvm from Cflags
+strip_include_path_components = 1
+
+[package.metadata.capi.install.include]
+asset = [{from = "../igvm_c/include/igvm.h"}, {from = "../igvm_c/include/igvm_defs.h"}]
 
 [package.metadata.docs.rs]
 # Document all features
