@@ -250,7 +250,9 @@ pub enum IgvmVariableHeaderType {
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
     /// TDX launch time configurations as described by
     /// [`IGVM_VHS_TD_INFO`].
-    IGVM_VHT_TD_INFO = 0x104,
+    /// Note that this is header is development only and
+    /// not production ready.
+    IGVM_VHT_TD_INFO = 0x1FF,
 
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
     /// A parameter area structure described by [`IGVM_VHS_PARAMETER_AREA`].
