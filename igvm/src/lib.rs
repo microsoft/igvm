@@ -344,6 +344,8 @@ pub enum IgvmInitializationHeader {
         vp_index: u16,
         vtl: Vtl,
     },
+    /// Represents an [IGVM_VHS_TD_INFO].
+    TdInfo { compatibility_mask: u32, xfam: u64 },
 }
 
 impl IgvmInitializationHeader {
@@ -357,6 +359,7 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 size_of::<IGVM_VHS_PAGE_TABLE_RELOCATION>()
             }
+            IgvmInitializationHeader::TdInfo { .. } => size_of::<IGVM_VHS_TD_INFO>(),
         };
 
         size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional
@@ -376,6 +379,7 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION
             }
+            IgvmInitializationHeader::TdInfo { .. } => IgvmVariableHeaderType::IGVM_VHT_TD_INFO,
         }
     }
 
@@ -454,6 +458,10 @@ impl IgvmInitializationHeader {
 
                 Ok(())
             }
+            IgvmInitializationHeader::TdInfo {
+                compatibility_mask: _,
+                xfam: _,
+            } => Ok(()),
         }
     }
 
@@ -550,6 +558,22 @@ impl IgvmInitializationHeader {
                     vtl: vtl.try_into().map_err(|_| BinaryHeaderError::InvalidVtl)?,
                 }
             }
+            IgvmVariableHeaderType::IGVM_VHT_TD_INFO if length == size_of::<IGVM_VHS_TD_INFO>() => {
+                let IGVM_VHS_TD_INFO {
+                    compatibility_mask,
+                    reserved,
+                    xfam,
+                } = read_header(&mut variable_headers)?;
+
+                if reserved != 0 {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+
+                IgvmInitializationHeader::TdInfo {
+                    compatibility_mask,
+                    xfam,
+                }
+            }
 
             _ => return Err(BinaryHeaderError::InvalidVariableHeaderType),
         };
@@ -570,6 +594,9 @@ impl IgvmInitializationHeader {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
             PageTableRelocationRegion {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
+            TdInfo {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
         }
@@ -662,6 +689,22 @@ impl IgvmInitializationHeader {
                 append_header(
                     &info,
                     IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION,
+                    variable_headers,
+                );
+            }
+            IgvmInitializationHeader::TdInfo {
+                compatibility_mask,
+                xfam,
+            } => {
+                let info = IGVM_VHS_TD_INFO {
+                    compatibility_mask: *compatibility_mask,
+                    reserved: 0,
+                    xfam: *xfam,
+                };
+
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_TD_INFO,
                     variable_headers,
                 );
             }
@@ -2348,7 +2391,7 @@ impl IgvmFile {
     fn validate_platform_headers<'a>(
         revision: IgvmRevision,
         platform_headers: impl Iterator<Item = &'a IgvmPlatformHeader>,
-    ) -> Result<(), Error> {
+    ) -> Result<HashMap<IgvmPlatformType, &'a IGVM_VHS_SUPPORTED_PLATFORM>, Error> {
         let mut at_least_one = false;
         let mut isolation_types = HashMap::new();
 
@@ -2392,7 +2435,7 @@ impl IgvmFile {
         if !at_least_one {
             Err(Error::NoPlatformHeaders)
         } else {
-            Ok(())
+            Ok(isolation_types)
         }
     }
 
@@ -2402,6 +2445,7 @@ impl IgvmFile {
     fn validate_initialization_headers(
         revision: IgvmRevision,
         initialization_headers: &[IgvmInitializationHeader],
+        isolation_types: HashMap<IgvmPlatformType, &IGVM_VHS_SUPPORTED_PLATFORM>,
     ) -> Result<DirectiveHeaderValidationInfo, Error> {
         let mut page_table_masks = 0;
         let mut used_vp_idents: Vec<VpIdentifier> = Vec::new();
@@ -2506,6 +2550,20 @@ impl IgvmFile {
                         vp_index: *vp_index,
                         vtl: *vtl,
                     })
+                }
+                IgvmInitializationHeader::TdInfo {
+                    compatibility_mask,
+                    xfam: _,
+                } => {
+                    if !isolation_types.contains_key(&IgvmPlatformType::TDX)
+                        || isolation_types
+                            .get(&IgvmPlatformType::TDX)
+                            .unwrap()
+                            .compatibility_mask
+                            != *compatibility_mask
+                    {
+                        return Err(Error::InvalidPlatformType);
+                    }
                 }
                 // TODO: validate SNP policy compatibility mask specifies SNP
                 _ => {}
@@ -2792,9 +2850,12 @@ impl IgvmFile {
             return Err(Error::UnsupportedPageSize(revision.page_size() as u32));
         }
 
-        Self::validate_platform_headers(revision, platform_headers.iter())?;
-        let validation_info =
-            Self::validate_initialization_headers(revision, &initialization_headers)?;
+        let isolation_types = Self::validate_platform_headers(revision, platform_headers.iter())?;
+        let validation_info = Self::validate_initialization_headers(
+            revision,
+            &initialization_headers,
+            isolation_types,
+        )?;
         Self::validate_directive_headers(revision, &directive_headers, validation_info)?;
 
         Ok(Self {
@@ -3159,22 +3220,22 @@ impl IgvmFile {
         // Validate the combination of both is valid.
         #[cfg(debug_assertions)]
         {
-            debug_assert!(Self::validate_platform_headers(
-                self.revision,
-                self.platform_headers.iter()
-            )
-            .is_ok());
-            debug_assert!(Self::validate_platform_headers(
-                other.revision,
-                other.platform_headers.iter()
-            )
-            .is_ok());
-            let self_info =
-                Self::validate_initialization_headers(self.revision, &self.initialization_headers)
+            let self_isolation_types =
+                Self::validate_platform_headers(self.revision, self.platform_headers.iter())
                     .expect("valid file");
+            let other_isolation_types =
+                Self::validate_platform_headers(other.revision, other.platform_headers.iter())
+                    .expect("valid file");
+            let self_info = Self::validate_initialization_headers(
+                self.revision,
+                &self.initialization_headers,
+                self_isolation_types,
+            )
+            .expect("valid file");
             let other_info = Self::validate_initialization_headers(
                 other.revision,
                 &other.initialization_headers,
+                other_isolation_types,
             )
             .expect("valid file");
             debug_assert!(Self::validate_directive_headers(
@@ -3327,6 +3388,9 @@ impl IgvmFile {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
                 IgvmInitializationHeader::PageTableRelocationRegion {
+                    compatibility_mask, ..
+                } => fixup_mask(compatibility_mask),
+                IgvmInitializationHeader::TdInfo {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
             }
@@ -3995,6 +4059,36 @@ mod tests {
     //       test validate directive headers
     //
     //       test headers equivalent function
+
+    #[test]
+    fn test_td_info_validation() {
+        // Test that creating an IgvmFile with a TdInfo header but without a TDX
+        // platform fails.
+        let file = IgvmFile::new(
+            IgvmRevision::V1,
+            vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+            vec![IgvmInitializationHeader::TdInfo {
+                compatibility_mask: 0x1,
+                xfam: 0x00000000000618e7,
+            }],
+            vec![],
+        );
+        assert!(file.is_err());
+        assert!(matches!(file.err().unwrap(), Error::InvalidPlatformType,));
+
+        // Test that creating an IgvmFile with a TdInfo header and a TDX
+        // platform succeeds.
+        let file = IgvmFile::new(
+            IgvmRevision::V1,
+            vec![new_platform(0x1, IgvmPlatformType::TDX)],
+            vec![IgvmInitializationHeader::TdInfo {
+                compatibility_mask: 0x1,
+                xfam: 0,
+            }],
+            vec![],
+        );
+        assert!(file.is_ok());
+    }
 
     /// Test a variable header matches the supplied args. Also tests that the header deserialized returns the original
     /// header.
