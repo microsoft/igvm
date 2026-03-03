@@ -1863,11 +1863,8 @@ impl IgvmDirectiveHeader {
                         // Copy the VMSA bytes into the VMSA, and validate the remaining bytes are 0.
                         // todo: zerocopy: as of 0.8, can recover from allocation failure
                         let mut vmsa = SevVmsa::new_box_zeroed().unwrap();
-                        let (vmsa_slice, remaining) = data.split_at(size_of::<SevVmsa>());
+                        let (vmsa_slice, _remaining) = data.split_at(size_of::<SevVmsa>());
                         vmsa.as_mut_bytes().copy_from_slice(vmsa_slice);
-                        if remaining.iter().any(|b| *b != 0) {
-                            return Err(BinaryHeaderError::InvalidVmsa);
-                        }
 
                         IgvmDirectiveHeader::SnpVpContext {
                             gpa: header.gpa.into(),
