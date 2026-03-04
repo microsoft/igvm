@@ -469,7 +469,7 @@ pub struct SnpPolicy {
     pub abi_major: u8,
     #[bits(1)]
     pub smt: u8,
-    #[bits(1)]
+    #[bits(1, default = 1)]
     pub reserved_must_be_one: u8,
     #[bits(1)]
     pub migrate_ma: u8,
