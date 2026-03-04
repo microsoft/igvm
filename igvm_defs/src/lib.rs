@@ -529,6 +529,8 @@ pub struct CcaPolicy {
 }
 
 /// Hash algorithms for Arm CCA used in [`CcaPolicy::hash_algorithm`].
+/// These algorithms correspond to those defined in the RMM specification,
+/// section "C2.24 RmmHashAlgorithm type".
 #[open_enum]
 #[repr(u8)]
 pub enum CcaHashAlgorithm {
@@ -1058,8 +1060,15 @@ pub struct VbsVpContextRegister {
 const_assert_eq!(size_of::<VbsVpContextRegister>(), 0x20);
 
 /// Format of [`IGVM_VHS_VP_CONTEXT`] file data for a native ARM64 CCA image.
-/// Registers not specified here are initialized to their architectural
-/// reset values.
+///
+/// The VP Context corresponds to the REC (Realm Execution Context) in CCA.
+/// Therefore, the registers listed below match those defined in the RMM
+/// specification, section "B4.6.69 RmiRecParams type", with one exception:
+/// `mpidr` is not included, as it is determined by the host and does not need
+/// to be specified in the IGVM file.
+///
+/// Any registers not explicitly specified here are initialized to their
+/// architectural reset values.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IgvmVpContextAArch64Cca {
