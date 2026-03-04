@@ -508,30 +508,11 @@ pub struct TdxPolicy {
     pub reserved: u64,
 }
 
-/// The Arm CCA policy used in [`IGVM_VHS_GUEST_POLICY::policy`].
-#[bitfield(u64)]
-#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
-pub struct CcaPolicy {
-    /// Whether debug is allowed for the Realm.
-    #[bits(1)]
-    pub debug_allowed: u8,
-    /// Hash algorithm to measure the initial state of the Realm.
-    #[bits(8)]
-    pub hash_algorithm: u8,
-    /// Live Firmware Activation (LFA) policy for the components within the Realm's TCB.
-    #[bits(2)]
-    pub lfa_policy: u8,
-    /// Whether the Memory Encryption Context (MEC) is shared.
-    #[bits(1)]
-    pub mec_shared: u8,
-    #[bits(52)]
-    pub reserved: u64,
-}
-
 /// Hash algorithms for Arm CCA used in [`CcaPolicy::hash_algorithm`].
 /// These algorithms correspond to those defined in the RMM specification,
 /// section "C2.24 RmmHashAlgorithm type".
 #[open_enum]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CcaHashAlgorithm {
     /// SHA-256 hash algorithm
@@ -542,8 +523,19 @@ pub enum CcaHashAlgorithm {
     SHA512 = 0x2,
 }
 
+impl CcaHashAlgorithm {
+    const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    const fn into_bits(self) -> u8 {
+        self.0
+    }
+}
+
 /// Live Firmware Activation (LFA) policies for Arm CCA used in [`CcaPolicy::lfa_policy`].
 #[open_enum]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum CcaLfaPolicy {
     /// Components within the Realm's TCB cannot be updated via LFA while
@@ -552,6 +544,36 @@ pub enum CcaLfaPolicy {
     /// Components within the Realm's TCB can be updated via LFA while
     /// the realm is running.
     LFA_ALLOW = 0x1,
+}
+
+impl CcaLfaPolicy {
+    const fn from_bits(bits: u8) -> Self {
+        Self(bits)
+    }
+
+    const fn into_bits(self) -> u8 {
+        self.0
+    }
+}
+
+/// The Arm CCA policy used in [`IGVM_VHS_GUEST_POLICY::policy`].
+#[bitfield(u64)]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
+pub struct CcaPolicy {
+    /// Whether debug is allowed for the Realm.
+    #[bits(1)]
+    pub debug_allowed: u8,
+    /// Hash algorithm to measure the initial state of the Realm.
+    #[bits(8)]
+    pub hash_algorithm: CcaHashAlgorithm,
+    /// Live Firmware Activation (LFA) policy for the components within the Realm's TCB.
+    #[bits(2)]
+    pub lfa_policy: CcaLfaPolicy,
+    /// Whether the Memory Encryption Context (MEC) is shared.
+    #[bits(1)]
+    pub mec_shared: u8,
+    #[bits(52)]
+    pub reserved: u64,
 }
 
 /// This region describes VTL2.
@@ -1062,10 +1084,16 @@ const_assert_eq!(size_of::<VbsVpContextRegister>(), 0x20);
 /// Format of [`IGVM_VHS_VP_CONTEXT`] file data for a native ARM64 CCA image.
 ///
 /// The VP Context corresponds to the REC (Realm Execution Context) in CCA.
-/// Therefore, the registers listed below match those defined in the RMM
-/// specification, section "B4.6.69 RmiRecParams type", with one exception:
-/// `mpidr` is not included, as it is determined by the host and does not need
-/// to be specified in the IGVM file.
+/// Therefore, the fields listed below match those defined in the RMM
+/// specification, section "B4.6.69 RmiRecParams type".
+///
+/// These include the general-purpose registers x0–x7, the PC register,
+/// and a 64-bit flags field. All of these fields contribute to the
+/// RIM (Realm Initial Measurement).
+///
+/// One exception is `mpidr`, which is not included here because it is
+/// determined by the host and does not need to be specified in the
+/// IGVM file.
 ///
 /// Any registers not explicitly specified here are initialized to their
 /// architectural reset values.
@@ -1090,6 +1118,8 @@ pub struct IgvmVpContextAArch64Cca {
     pub x7: u64,
     /// Program counter.
     pub pc: u64,
+    /// Flags for the context.
+    pub flags: u64,
 }
 
 /// This structure describes memory the IGVM file expects to be present in the
