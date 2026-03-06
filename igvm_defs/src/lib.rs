@@ -341,6 +341,14 @@ pub enum IgvmVariableHeaderType {
     /// specified by a structure of type [`IGVM_VHS_PARAMETER`].
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
     IGVM_VHT_ENVIRONMENT_INFO_PARAMETER = 0x313,
+    /// A Corim document structure described by [`IGVM_VHS_CORIM_DOCUMENT`].
+    /// FIXME: should this be an init header to be early in the file?
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    IGVM_VHT_CORIM_DOCUMENT = 0x314,
+    /// A Corim signature structure described by [`IGVM_VHS_CORIM_SIGNATURE`].
+    /// FIXME: should this be an init header to be early in the file?
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    IGVM_VHT_CORIM_SIGNATURE = 0x315,
 }
 
 /// The range of header types for platform structures.
@@ -1236,4 +1244,53 @@ pub enum VbsSigningAlgorithm {
     INVALID = 0x0,
     /// ECDSA P384.
     ECDSA_P384 = 0x1,
+}
+
+/// A structure defining a CoRIM CBOR document for a given platform.
+///
+/// The data described by this header is a CBOR CoRIM document. There may only
+/// be one for a given platform. There may be an associated COSE_Sign1 structure
+/// for this document, see [`IGVM_VHS_CORIM_SIGNATURE`].
+///
+/// The CoRIM payload must adhere to the following specifications for each
+/// platform:
+///
+/// | Platform | Specification |
+/// |----------|---------------|
+/// | Intel TDX | TBD |
+/// | VBS | TBD |
+/// | AMD SEV-SNP | TBD |
+/// | ARM CCA | TBD |
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
+pub struct IGVM_VHS_CORIM_DOCUMENT {
+    /// Compatibility mask.
+    pub compatibility_mask: u32,
+    /// File offset for the CoRIM CBOR payload.
+    pub file_offset: u32,
+    /// Size in bytes of the CoRIM CBOR payload.
+    pub size_bytes: u32,
+    /// Reserved.
+    pub reserved: u32,
+}
+
+/// This structure descibres a  COSE_Sign1 structure for a detached CoRIM CBOR
+/// payload for a given platform. The payload measured by this CBOR is described
+/// the corresponding [`IGVM_VHS_CORIM_DOCUMENT`] structure, which must be
+/// defined before this structure.
+///
+/// For more information on the structure described by this header, see the
+/// COSE_Sign1 structure described in section 4.2 in RFC
+/// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
+pub struct IGVM_VHS_CORIM_SIGNATURE {
+    /// Compatibility mask.
+    pub compatibility_mask: u32,
+    /// File offset for the COSE_Sign1 measurement payload.
+    pub file_offset: u32,
+    /// Size in bytes of the COSE_Sign1 measurement payload.
+    pub size_bytes: u32,
+    /// Reserved.
+    pub reserved: u32,
 }
