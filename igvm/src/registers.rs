@@ -178,11 +178,18 @@ impl X86Register {
 }
 
 /// AArch64 registers that can be stored in IGVM VP context structures.
+/// The list can be extended if new registers are needed by new context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AArch64Register {
     Pc(u64),
     X0(u64),
     X1(u64),
+    X2(u64),
+    X3(u64),
+    X4(u64),
+    X5(u64),
+    X6(u64),
+    X7(u64),
     Cpsr(u64),
     SctlrEl1(u64),
     TcrEl1(u64),
@@ -198,6 +205,12 @@ impl AArch64Register {
             AArch64Register::Pc(reg) => (HvArm64RegisterName::XPc, reg.into()),
             AArch64Register::X0(reg) => (HvArm64RegisterName::X0, reg.into()),
             AArch64Register::X1(reg) => (HvArm64RegisterName::X1, reg.into()),
+            AArch64Register::X2(reg) => (HvArm64RegisterName::X2, reg.into()),
+            AArch64Register::X3(reg) => (HvArm64RegisterName::X3, reg.into()),
+            AArch64Register::X4(reg) => (HvArm64RegisterName::X4, reg.into()),
+            AArch64Register::X5(reg) => (HvArm64RegisterName::X5, reg.into()),
+            AArch64Register::X6(reg) => (HvArm64RegisterName::X6, reg.into()),
+            AArch64Register::X7(reg) => (HvArm64RegisterName::X7, reg.into()),
             AArch64Register::Cpsr(reg) => (HvArm64RegisterName::Cpsr, reg.into()),
             AArch64Register::SctlrEl1(reg) => (HvArm64RegisterName::SctlrEl1, reg.into()),
             AArch64Register::TcrEl1(reg) => (HvArm64RegisterName::TcrEl1, reg.into()),
@@ -287,6 +300,12 @@ impl TryFrom<igvm_defs::VbsVpContextRegister> for AArch64Register {
             HvArm64RegisterName::XPc => Self::Pc(register_value.as_u64()),
             HvArm64RegisterName::X0 => Self::X0(register_value.as_u64()),
             HvArm64RegisterName::X1 => Self::X1(register_value.as_u64()),
+            HvArm64RegisterName::X2 => Self::X1(register_value.as_u64()),
+            HvArm64RegisterName::X3 => Self::X1(register_value.as_u64()),
+            HvArm64RegisterName::X4 => Self::X1(register_value.as_u64()),
+            HvArm64RegisterName::X5 => Self::X1(register_value.as_u64()),
+            HvArm64RegisterName::X6 => Self::X1(register_value.as_u64()),
+            HvArm64RegisterName::X7 => Self::X1(register_value.as_u64()),
             HvArm64RegisterName::Cpsr => Self::Cpsr(register_value.as_u64()),
             HvArm64RegisterName::SctlrEl1 => Self::SctlrEl1(register_value.as_u64()),
             HvArm64RegisterName::TcrEl1 => Self::TcrEl1(register_value.as_u64()),
