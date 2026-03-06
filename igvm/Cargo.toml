@@ -5,6 +5,7 @@
 name = "igvm"
 version = "0.4.0"
 edition = "2021"
+rust-version = "1.87"
 description = "The igvm crate is an implementation of a parser for the Independent Guest Virtual Machine (IGVM) file format."
 license = "MIT"
 authors = ["Microsoft"]
