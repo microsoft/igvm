@@ -248,6 +248,11 @@ pub enum IgvmVariableHeaderType {
     /// A page table relocation region described by
     /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`].
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
+    /// TDX launch time configurations as described by
+    /// [`IGVM_VHS_TD_INFO`].
+    /// Note that this is header is development only and
+    /// not production ready.
+    IGVM_VHT_TD_INFO = 0x1FF,
 
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
     /// A parameter area structure described by [`IGVM_VHS_PARAMETER_AREA`].
@@ -644,6 +649,26 @@ pub struct IGVM_VHS_PAGE_TABLE_RELOCATION {
     pub size: u64,
     /// The number of already used pages by the pagetable.
     pub used_size: u64,
+}
+
+/// TDX VM launch time configurations that can be optionally specified.
+/// If not specified the host will use a default value. These values
+/// will be reflected in the VMs attestation measurement.
+///
+/// The XFAM (Extended Features Allowed Mask) value specifies a mask of CPU extended features
+/// that the TD is allowed to use. If the XFAM value is invalid or not supported by the host,
+/// the host should fail to load the IGVM file.
+///
+/// Only supported on TDX platforms.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
+pub struct IGVM_VHS_TD_INFO {
+    /// Compatibility mask.
+    pub compatibility_mask: u32,
+    /// Reserved, must be zero.
+    pub reserved: u32,
+    /// XFAM for CPU extended features setting.
+    pub xfam: u64,
 }
 
 /// This structure defines a region of memory that can be used for holding
