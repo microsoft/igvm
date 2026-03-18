@@ -248,6 +248,12 @@ pub enum IgvmVariableHeaderType {
     /// A page table relocation region described by
     /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`].
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
+    /// A Corim document structure described by [`IGVM_VHS_CORIM_DOCUMENT`].
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    IGVM_VHT_CORIM_DOCUMENT = 0x104,
+    /// A Corim signature structure described by [`IGVM_VHS_CORIM_SIGNATURE`].
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    IGVM_VHT_CORIM_SIGNATURE = 0x105,
 
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
     /// A parameter area structure described by [`IGVM_VHS_PARAMETER_AREA`].
@@ -341,14 +347,6 @@ pub enum IgvmVariableHeaderType {
     /// specified by a structure of type [`IGVM_VHS_PARAMETER`].
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
     IGVM_VHT_ENVIRONMENT_INFO_PARAMETER = 0x313,
-    /// A Corim document structure described by [`IGVM_VHS_CORIM_DOCUMENT`].
-    /// FIXME: should this be an init header to be early in the file?
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
-    IGVM_VHT_CORIM_DOCUMENT = 0x314,
-    /// A Corim signature structure described by [`IGVM_VHS_CORIM_SIGNATURE`].
-    /// FIXME: should this be an init header to be early in the file?
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
-    IGVM_VHT_CORIM_SIGNATURE = 0x315,
 }
 
 /// The range of header types for platform structures.
@@ -1252,7 +1250,7 @@ pub enum VbsSigningAlgorithm {
 /// be one for a given platform. There may be an associated COSE_Sign1 structure
 /// for this document, see [`IGVM_VHS_CORIM_SIGNATURE`].
 ///
-/// The CoRIM payload must adhere to the following specifications for each
+/// The CoRIM document must adhere to the following specifications for each
 /// platform:
 ///
 /// | Platform | Specification |
