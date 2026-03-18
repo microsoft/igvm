@@ -11,17 +11,12 @@ API does not need to be manually updated inline with any changes to the rust
 definitions.
 
 ## Dependencies
-The C API header files are generated using the `cbindgen` tool. This tool needs
-to be installed before the API can be built. This can be achieved using:
+The C API header files are generated using the `cbindgen` tool and the library is
+built and installed using `cargo-c`. Both tools need to be installed before the
+API can be built. This can be achieved using:
 
 ```bash
-cargo install --force cbindgen
-```
-
-Also, `cargo-c` needs to be installed to build the C code:
-
-```bash
-cargo install --force cargo-c
+cargo install --force cbindgen cargo-c
 ```
 
 In addition, `sample/dump_igvm` and the C unit tests requires a C compiler to be
