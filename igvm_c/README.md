@@ -19,6 +19,12 @@ API can be built. This can be achieved using:
 cargo install --force cbindgen cargo-c
 ```
 
+Also, `cargo-c` needs to be installed to build the C code:
+
+```bash
+cargo install --force cargo-c
+```
+
 In addition, `sample/dump_igvm` and the C unit tests requires a C compiler to be
 installed.
 
