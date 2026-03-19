@@ -324,4 +324,7 @@ pub struct SevVmsa {
 
     // YMM high registers
     pub ymm_registers: [SevXmmRegister; 16],
+
+    // Pad to 4KB
+    pub vmsa_padding: [u8; 2448],
 }
