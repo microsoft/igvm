@@ -517,10 +517,10 @@ pub struct TdxPolicy {
 pub enum CcaHashAlgorithm {
     /// SHA-256 hash algorithm
     SHA256 = 0x0,
-    /// SHA-384 hash algorithm
-    SHA384 = 0x1,
     /// SHA-512 hash algorithm
-    SHA512 = 0x2,
+    SHA512 = 0x1,
+    /// SHA-384 hash algorithm
+    SHA384 = 0x2,
 }
 
 impl CcaHashAlgorithm {
