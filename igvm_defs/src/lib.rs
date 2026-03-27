@@ -886,8 +886,6 @@ pub struct IGVM_VHS_ERROR_RANGE {
 /// initial context, such as AMD SEV.
 /// Registers not specified here are initialized to their architectural
 /// reset values.
-///
-/// Only supported in version 2 and later files.
 #[cfg(feature = "unstable")]
 #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 #[repr(C)]
