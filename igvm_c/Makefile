@@ -39,13 +39,13 @@ all: build test
 build: $(API_DIR)/include/igvm.h $(TARGET_PATH)/dump_igvm$(EXE)
 
 $(LIBIGVM): $(API_DIR)/include/igvm.h
-	$(CARGO) cbuild --prefix $(PREFIX) --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
+	$(CARGO) cbuild $(if $(RELEASE),--release) --prefix $(PREFIX) --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 
 $(TARGET_PATH)/libigvm_defs.rlib:
 	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_defs/Cargo.toml
 
 $(TARGET_PATH)/test_data$(EXE):
-	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_c/test_data/Cargo.toml
+	$(CARGO) build $(if $(RELEASE),--release) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_c/test_data/Cargo.toml
 
 $(API_DIR)/include/igvm.h: $(RUST_SOURCE)
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm.toml $(IGVM_DIR)/igvm -o "$(API_DIR)/include/igvm.h"
