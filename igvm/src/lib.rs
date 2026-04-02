@@ -1048,14 +1048,18 @@ impl IgvmDirectiveHeader {
                     // No data means a file offset of 0.
                     0
                 } else {
-                    // Pad data out to 4K if smaller. It must not be larger than
-                    // 4K.
-                    //
-                    // TODO: Support 2MB page data
-                    assert!(data.len() as u64 <= PAGE_SIZE_4K);
+                    let page_size = if flags.is_2mb_page() {
+                        page_table::X64_LARGE_PAGE_SIZE
+                    } else {
+                        PAGE_SIZE_4K
+                    };
+
+                    // Pad data out to page size if smaller. It must not be
+                    // larger than page size.
+                    assert!(data.len() as u64 <= page_size);
 
                     let align_up_iter =
-                        std::iter::repeat_n(&0u8, PAGE_SIZE_4K as usize - data.len());
+                        std::iter::repeat_n(&0u8, page_size as usize - data.len());
                     let data: Vec<u8> = data.iter().chain(align_up_iter).copied().collect();
                     file_data.write_file_data(&data)
                 };
@@ -1575,28 +1579,37 @@ impl IgvmDirectiveHeader {
             IgvmDirectiveHeader::PageData {
                 gpa,
                 compatibility_mask: _,
-                flags: _,
+                flags,
                 data_type,
                 data,
             } => {
-                // TODO: support 2MB pages
+                // Data type must be valid type.
+                let max_page_size = match *data_type {
+                    IgvmPageDataType::NORMAL => page_table::X64_LARGE_PAGE_SIZE,
+                    IgvmPageDataType::SECRETS
+                    | IgvmPageDataType::CPUID_DATA
+                    | IgvmPageDataType::CPUID_XF => PAGE_SIZE_4K,
+                    _ => return Err(BinaryHeaderError::InvalidPageDataType),
+                };
+
+                let page_size = if flags.is_2mb_page() {
+                    page_table::X64_LARGE_PAGE_SIZE
+                } else {
+                    PAGE_SIZE_4K
+                };
+
+                // Page size must be valid for the page type
+                if page_size > max_page_size {
+                    return Err(BinaryHeaderError::InvalidDataSize);
+                }
 
                 // GPA must be aligned.
-                if gpa % PAGE_SIZE_4K != 0 {
+                if gpa % page_size != 0 {
                     return Err(BinaryHeaderError::UnalignedAddress(*gpa));
                 }
 
-                // Data type must be valid type.
-                match *data_type {
-                    IgvmPageDataType::NORMAL
-                    | IgvmPageDataType::SECRETS
-                    | IgvmPageDataType::CPUID_DATA
-                    | IgvmPageDataType::CPUID_XF => {}
-                    _ => return Err(BinaryHeaderError::InvalidPageDataType),
-                }
-
                 // Data must be less than 4K.
-                if data.len() > PAGE_SIZE_4K as usize {
+                if data.len() > page_size as usize {
                     return Err(BinaryHeaderError::InvalidDataSize);
                 }
             }
@@ -1749,8 +1762,13 @@ impl IgvmDirectiveHeader {
                     reserved,
                 } = read_header(&mut variable_headers)?;
 
-                // TODO: only 4K data supported
-                let data = extract_file_data(file_offset, PAGE_SIZE_4K as usize)?;
+                let page_size = if flags.is_2mb_page() {
+                    page_table::X64_LARGE_PAGE_SIZE
+                } else {
+                    PAGE_SIZE_4K
+                };
+
+                let data = extract_file_data(file_offset, page_size as usize)?;
 
                 if reserved != 0 {
                     return Err(BinaryHeaderError::ReservedNotZero);
