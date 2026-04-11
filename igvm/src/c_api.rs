@@ -61,6 +61,10 @@ pub enum IgvmResult {
     IGVMAPI_INVALID_FIXED_HEADER_ARCH = -26,
     IGVMAPI_MERGE_REVISION = -27,
     IGVMAPI_INVALID_CCA_POLICY_COMPATIBILITY_MASK = -28,
+    #[cfg(feature = "corim")]
+    IGVMAPI_CORIM_GENERATION = -29,
+    #[cfg(feature = "corim")]
+    IGVMAPI_MEASUREMENT_FAILED = -30,
 }
 
 type IgvmHandle = i32;
@@ -168,6 +172,10 @@ fn translate_error(error: Error) -> IgvmResult {
         Error::InvalidCcaPolicyCompatibilityMask(_) => {
             IgvmResult::IGVMAPI_INVALID_CCA_POLICY_COMPATIBILITY_MASK
         }
+        #[cfg(feature = "corim")]
+        Error::CorimGeneration(_) => IgvmResult::IGVMAPI_CORIM_GENERATION,
+        #[cfg(feature = "corim")]
+        Error::MeasurementFailed(_) => IgvmResult::IGVMAPI_MEASUREMENT_FAILED,
     }
 }
 
