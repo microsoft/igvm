@@ -349,6 +349,9 @@ pub const IGVM_VHT_RANGE_PLATFORM: core::ops::RangeInclusive<u32> = 0x1..=0x100;
 pub const IGVM_VHT_RANGE_INIT: core::ops::RangeInclusive<u32> = 0x101..=0x200;
 /// The range of header types for directive structures.
 pub const IGVM_VHT_RANGE_DIRECTIVE: core::ops::RangeInclusive<u32> = 0x301..=0x400;
+/// When set in an [`IgvmVariableHeaderType`], the header may be ignored by
+/// loaders that do not recognize it.
+pub const IGVM_VHT_OPTIONAL_BIT: u32 = 1 << 31;
 
 /// The header describing each structure in the variable header section. Headers
 /// are aligned to 8 byte boundaries.
