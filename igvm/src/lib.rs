@@ -344,12 +344,16 @@ pub enum IgvmInitializationHeader {
         vp_index: u16,
         vtl: Vtl,
     },
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
     CorimDocument {
         compatibility_mask: u32,
         // FUTURE: have the corim document in a typed structure, with the
         // required per-plaform fields.
         document: Vec<u8>,
     },
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
     CorimSignature {
         compatibility_mask: u32,
         // FUTURE: have the corim signature in a typed structure
@@ -368,7 +372,9 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 size_of::<IGVM_VHS_PAGE_TABLE_RELOCATION>()
             }
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimDocument { .. } => size_of::<IGVM_VHS_CORIM_DOCUMENT>(),
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimSignature { .. } => {
                 size_of::<IGVM_VHS_CORIM_SIGNATURE>()
             }
@@ -391,9 +397,11 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION
             }
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimDocument { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
             }
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimSignature { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE
             }
@@ -477,10 +485,12 @@ impl IgvmInitializationHeader {
             }
             // TODO: validate CoRIM document has the minimum fields required
             // described by the corresponding specification for that platform.
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimDocument { .. } => Ok(()),
             // TODO: validate CoRIM signature has the right fields, and
             // correctly signs the corresponding document. This requires crypto
             // crates and might need to be gated behind a feature flag.
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimSignature { .. } => Ok(()),
         }
     }
@@ -501,6 +511,10 @@ impl IgvmInitializationHeader {
 
         // Extract file data from a given file offset with the given size. File
         // offset of 0 results in no data.
+        #[cfg(not(feature = "corim"))]
+        let _ = (file_data, file_data_start);
+
+        #[cfg(feature = "corim")]
         let extract_file_data =
             |file_offset: u32, size: usize| -> Result<Vec<u8>, BinaryHeaderError> {
                 if file_offset == 0 {
@@ -597,6 +611,7 @@ impl IgvmInitializationHeader {
                     vtl: vtl.try_into().map_err(|_| BinaryHeaderError::InvalidVtl)?,
                 }
             }
+            #[cfg(feature = "corim")]
             IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
                 if length == size_of::<IGVM_VHS_CORIM_DOCUMENT>() =>
             {
@@ -616,6 +631,7 @@ impl IgvmInitializationHeader {
                     document: extract_file_data(file_offset, size_bytes as usize)?,
                 }
             }
+            #[cfg(feature = "corim")]
             IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE
                 if length == size_of::<IGVM_VHS_CORIM_SIGNATURE>() =>
             {
@@ -657,9 +673,11 @@ impl IgvmInitializationHeader {
             PageTableRelocationRegion {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            #[cfg(feature = "corim")]
             CorimDocument {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            #[cfg(feature = "corim")]
             CorimSignature {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
@@ -673,6 +691,9 @@ impl IgvmInitializationHeader {
     ) -> Result<(), BinaryHeaderError> {
         // Only serialize this header if valid.
         self.validate()?;
+
+        #[cfg(not(feature = "corim"))]
+        let _ = file_data;
 
         match self {
             IgvmInitializationHeader::GuestPolicy {
@@ -760,6 +781,7 @@ impl IgvmInitializationHeader {
                     variable_headers,
                 );
             }
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimDocument {
                 compatibility_mask,
                 document,
@@ -781,6 +803,7 @@ impl IgvmInitializationHeader {
                     variable_headers,
                 );
             }
+            #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimSignature {
                 compatibility_mask,
                 signature,
@@ -1084,10 +1107,13 @@ pub enum BinaryHeaderError {
     UnsupportedX64Register(#[from] registers::UnsupportedRegister<HvX64RegisterName>),
     #[error("unsupported AArch64 register")]
     UnsupportedAArch64Register(#[from] registers::UnsupportedRegister<HvArm64RegisterName>),
+    #[cfg(feature = "corim")]
     #[error("multiple corim documents for a given compatibility mask {0:x}")]
     MultipleCorimDocuments(u32),
+    #[cfg(feature = "corim")]
     #[error("multiple corim signatures for a given compatibility mask {0:x}")]
     MultipleCorimSignatures(u32),
+    #[cfg(feature = "corim")]
     #[error("corim document missing for compatibility mask {0:x} with corresponding signature")]
     MissingCorimDocument(u32),
 }
@@ -2568,10 +2594,12 @@ impl IgvmFile {
 
         // Track which compatibility masks have had a corim document header,
         // only one allowed per compatibility mask.
+        #[cfg(feature = "corim")]
         let mut corim_document_seen: [bool; 32] = [false; 32];
 
         // Track which compatibility masks have a corim document signature, only
         // one allowed per compatibility mask.
+        #[cfg(feature = "corim")]
         let mut corim_document_signature_seen: [bool; 32] = [false; 32];
 
         for header in initialization_headers {
@@ -2656,6 +2684,7 @@ impl IgvmFile {
                 }
                 // TODO: validate SNP policy compatibility mask specifies SNP
                 IgvmInitializationHeader::GuestPolicy { .. } => {}
+                #[cfg(feature = "corim")]
                 IgvmInitializationHeader::CorimDocument {
                     compatibility_mask, ..
                 } => {
@@ -2671,6 +2700,7 @@ impl IgvmFile {
                         corim_document_seen[mask_index] = true;
                     }
                 }
+                #[cfg(feature = "corim")]
                 IgvmInitializationHeader::CorimSignature {
                     compatibility_mask, ..
                 } => {
@@ -3518,9 +3548,11 @@ impl IgvmFile {
                 IgvmInitializationHeader::PageTableRelocationRegion {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
+                #[cfg(feature = "corim")]
                 IgvmInitializationHeader::CorimDocument {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
+                #[cfg(feature = "corim")]
                 IgvmInitializationHeader::CorimSignature {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
@@ -4933,6 +4965,7 @@ mod tests {
         )
     }
 
+    #[cfg(feature = "corim")]
     #[test]
     fn test_corim_document() {
         let file_data_offset = 0x5000;
@@ -4959,6 +4992,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "corim")]
     #[test]
     fn test_corim_signature() {
         let file_data_offset = 0x6000;
@@ -4985,6 +5019,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "corim")]
     mod corim {
         use super::*;
 

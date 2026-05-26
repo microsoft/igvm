@@ -248,11 +248,13 @@ pub enum IgvmVariableHeaderType {
     /// A page table relocation region described by
     /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`].
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
-    /// A Corim document structure described by [`IGVM_VHS_CORIM_DOCUMENT`].
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    /// A CoRIM document structure described by [`IGVM_VHS_CORIM_DOCUMENT`].
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
     IGVM_VHT_CORIM_DOCUMENT = 0x104,
-    /// A Corim signature structure described by [`IGVM_VHS_CORIM_SIGNATURE`].
-    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    /// A CoRIM signature structure described by [`IGVM_VHS_CORIM_SIGNATURE`].
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
     IGVM_VHT_CORIM_SIGNATURE = 0x105,
 
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
@@ -1259,6 +1261,8 @@ pub enum VbsSigningAlgorithm {
 /// | VBS           | TBD           |
 /// | AMD SEV-SNP   | TBD           |
 /// | ARM CCA       | TBD           |
+#[cfg(feature = "corim")]
+#[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct IGVM_VHS_CORIM_DOCUMENT {
@@ -1280,6 +1284,8 @@ pub struct IGVM_VHS_CORIM_DOCUMENT {
 /// For more information on the structure described by this header, see the
 /// COSE_Sign1 structure described in section 4.2 in RFC
 /// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/.
+#[cfg(feature = "corim")]
+#[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct IGVM_VHS_CORIM_SIGNATURE {
