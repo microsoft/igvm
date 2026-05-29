@@ -10,11 +10,13 @@
 # cbindgen configuration files and annotations.
 set -e
 
-sed -i -e 's/INVALID = 0/IGVM_INVALID = 0/g' \
-        -e 's/RESERVED_DO_NOT_USE = /IGVM_RESERVED_DO_NOT_USE = /g' \
-        -e 's/RequiredMemoryFlags/IgvmRequiredMemoryFlags/g' \
-        -e 's/MemoryMapEntryFlags/IgvmMemoryMapEntryFlags/g' \
-        $1/igvm_defs.h
+sed -i.bak -e 's/INVALID = 0/IGVM_INVALID = 0/g' \
+           -e 's/RESERVED_DO_NOT_USE = /IGVM_RESERVED_DO_NOT_USE = /g' \
+           -e 's/RequiredMemoryFlags/IgvmRequiredMemoryFlags/g' \
+           -e 's/MemoryMapEntryFlags/IgvmMemoryMapEntryFlags/g' \
+           "$1/igvm_defs.h"
+rm -f "$1/igvm_defs.h.bak"
 
-sed -i -e 's/  HEADER_SECTION_/  IGVM_HEADER_SECTION_/g' \
-        $1/igvm.h
+sed -i.bak -e 's/  HEADER_SECTION_/  IGVM_HEADER_SECTION_/g' \
+           "$1/igvm.h"
+rm -f "$1/igvm.h.bak"
