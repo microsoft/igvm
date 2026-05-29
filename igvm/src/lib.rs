@@ -3923,13 +3923,6 @@ mod tests {
         })
     }
 
-    fn new_guest_policy(policy: u64, compatibility_mask: u32) -> IgvmInitializationHeader {
-        IgvmInitializationHeader::GuestPolicy {
-            policy,
-            compatibility_mask,
-        }
-    }
-
     fn new_page_data(page: u64, compatibility_mask: u32, data: &[u8]) -> IgvmDirectiveHeader {
         IgvmDirectiveHeader::PageData {
             gpa: page * PAGE_SIZE_4K,

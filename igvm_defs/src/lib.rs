@@ -562,16 +562,6 @@ pub enum CcaHashAlgorithm {
     SHA384 = 0x2,
 }
 
-impl CcaHashAlgorithm {
-    const fn from_bits(bits: u8) -> Self {
-        Self(bits)
-    }
-
-    const fn into_bits(self) -> u8 {
-        self.0
-    }
-}
-
 /// Live Firmware Activation (LFA) policies for Arm CCA used in [`CcaPolicy::lfa_policy`].
 #[open_enum]
 #[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
@@ -585,20 +575,11 @@ pub enum CcaLfaPolicy {
     LFA_ALLOW = 0x1,
 }
 
-impl CcaLfaPolicy {
-    const fn from_bits(bits: u8) -> Self {
-        Self(bits)
-    }
-
-    const fn into_bits(self) -> u8 {
-        self.0
-    }
-}
-
 /// Whether debug is allowed for the Realm.
 pub const CCA_POLICY_ATTR_DEBUG: u64 = 1 << 0;
 /// Whether the Memory Encryption Context (MEC) is shared.
 pub const CCA_POLICY_ATTR_MEC: u64 = 1 << 1;
+/// The Arm CCA policy used in [`IgvmVariableHeaderType::IGVM_VHT_CCA_POLICY`].
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
 pub struct IGVM_VHS_CCA_POLICY {
