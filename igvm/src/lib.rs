@@ -373,11 +373,9 @@ impl IgvmInitializationHeader {
                 size_of::<IGVM_VHS_PAGE_TABLE_RELOCATION>()
             }
             #[cfg(feature = "corim")]
-            IgvmInitializationHeader::CorimDocument { .. } => size_of::<IGVM_VHS_CORIM_DOCUMENT>(),
+            IgvmInitializationHeader::CorimDocument { .. } => size_of::<IGVM_VHS_CORIM_DATA>(),
             #[cfg(feature = "corim")]
-            IgvmInitializationHeader::CorimSignature { .. } => {
-                size_of::<IGVM_VHS_CORIM_SIGNATURE>()
-            }
+            IgvmInitializationHeader::CorimSignature { .. } => size_of::<IGVM_VHS_CORIM_DATA>(),
         };
 
         align_8(size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional)
@@ -613,9 +611,9 @@ impl IgvmInitializationHeader {
             }
             #[cfg(feature = "corim")]
             IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
-                if length == size_of::<IGVM_VHS_CORIM_DOCUMENT>() =>
+                if length == size_of::<IGVM_VHS_CORIM_DATA>() =>
             {
-                let IGVM_VHS_CORIM_DOCUMENT {
+                let IGVM_VHS_CORIM_DATA {
                     compatibility_mask,
                     reserved,
                     file_offset,
@@ -633,9 +631,9 @@ impl IgvmInitializationHeader {
             }
             #[cfg(feature = "corim")]
             IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE
-                if length == size_of::<IGVM_VHS_CORIM_SIGNATURE>() =>
+                if length == size_of::<IGVM_VHS_CORIM_DATA>() =>
             {
-                let IGVM_VHS_CORIM_SIGNATURE {
+                let IGVM_VHS_CORIM_DATA {
                     compatibility_mask,
                     reserved,
                     file_offset,
@@ -788,7 +786,7 @@ impl IgvmInitializationHeader {
             } => {
                 let file_offset = file_data.write_file_data(document);
 
-                let corim_document = IGVM_VHS_CORIM_DOCUMENT {
+                let corim_document = IGVM_VHS_CORIM_DATA {
                     compatibility_mask: *compatibility_mask,
                     reserved: 0,
                     file_offset,
@@ -810,7 +808,7 @@ impl IgvmInitializationHeader {
             } => {
                 let file_offset = file_data.write_file_data(signature);
 
-                let corim_signature = IGVM_VHS_CORIM_SIGNATURE {
+                let corim_signature = IGVM_VHS_CORIM_DATA {
                     compatibility_mask: *compatibility_mask,
                     reserved: 0,
                     file_offset,
@@ -4971,7 +4969,7 @@ mod tests {
         let file_data_offset = 0x5000;
         let document: Vec<u8> = vec![0xA1, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
 
-        let raw_header = IGVM_VHS_CORIM_DOCUMENT {
+        let raw_header = IGVM_VHS_CORIM_DATA {
             compatibility_mask: 0x1,
             file_offset: file_data_offset,
             size_bytes: document.len() as u32,
@@ -4998,7 +4996,7 @@ mod tests {
         let file_data_offset = 0x6000;
         let signature: Vec<u8> = vec![0xD2, 0x84, 0x43, 0xA1, 0x01, 0x26, 0xA0, 0x44];
 
-        let raw_header = IGVM_VHS_CORIM_SIGNATURE {
+        let raw_header = IGVM_VHS_CORIM_DATA {
             compatibility_mask: 0x1,
             file_offset: file_data_offset,
             size_bytes: signature.len() as u32,
