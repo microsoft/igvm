@@ -251,9 +251,11 @@ pub enum IgvmVariableHeaderType {
     /// A CoRIM CBOR document for a given platform, described by
     /// [`IGVM_VHS_CORIM_DATA`].
     ///
-    /// The data described by this header is a CBOR CoRIM document. There may
-    /// only be one for a given platform. There may be an associated
-    /// COSE_Sign1 structure for this document, see
+    /// The data described by this header is a CBOR CoRIM document, a
+    /// `tagged-unsigned-corim-map` as defined in section 4.1 of
+    /// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/. There may only
+    /// be one for a given platform. There may be an associated COSE_Sign1
+    /// structure for this document, see
     /// [`IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE`].
     ///
     /// The CoRIM document must adhere to the following specifications for each
