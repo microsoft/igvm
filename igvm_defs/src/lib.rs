@@ -248,6 +248,41 @@ pub enum IgvmVariableHeaderType {
     /// A page table relocation region described by
     /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`].
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
+    /// A CoRIM CBOR document for a given platform, described by
+    /// [`IGVM_VHS_CORIM_DATA`].
+    ///
+    /// The data described by this header is a CBOR CoRIM document, a
+    /// `tagged-unsigned-corim-map` as defined in section 4.1 of
+    /// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/. There may only
+    /// be one for a given platform. There may be an associated COSE_Sign1
+    /// structure for this document, see
+    /// [`IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE`].
+    ///
+    /// The CoRIM document must adhere to the following specifications for each
+    /// platform:
+    ///
+    /// | Platform      | Specification |
+    /// |---------------|---------------|
+    /// | Intel TDX     | TBD           |
+    /// | VBS           | TBD           |
+    /// | AMD SEV-SNP   | TBD           |
+    /// | ARM CCA       | TBD           |
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+    IGVM_VHT_CORIM_DOCUMENT = 0x104,
+    /// A COSE_Sign1 structure for a detached CoRIM CBOR payload for a given
+    /// platform, described by [`IGVM_VHS_CORIM_DATA`].
+    ///
+    /// The payload measured by this CBOR is described by the corresponding
+    /// [`IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT`] structure, which
+    /// must be defined before this structure.
+    ///
+    /// For more information on the structure described by this header, see the
+    /// COSE_Sign1 structure described in section 4.2 in RFC
+    /// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/.
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+    IGVM_VHT_CORIM_SIGNATURE = 0x105,
 
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
     /// A parameter area structure described by [`IGVM_VHS_PARAMETER_AREA`].
@@ -1236,4 +1271,20 @@ pub enum VbsSigningAlgorithm {
     INVALID = 0x0,
     /// ECDSA P384.
     ECDSA_P384 = 0x1,
+}
+
+/// A data payload descriptor for CoRIM document and signature headers.
+#[cfg(feature = "corim")]
+#[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
+pub struct IGVM_VHS_CORIM_DATA {
+    /// Compatibility mask.
+    pub compatibility_mask: u32,
+    /// File offset for the CoRIM payload.
+    pub file_offset: u32,
+    /// Size in bytes of the CoRIM payload.
+    pub size_bytes: u32,
+    /// Reserved.
+    pub reserved: u32,
 }

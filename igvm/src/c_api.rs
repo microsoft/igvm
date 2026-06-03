@@ -290,7 +290,7 @@ fn get_header(
                 .initialization_headers
                 .get(index as usize)
                 .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
-                .write_binary_header(&mut header_binary)
+                .write_binary_header(&mut header_binary, &mut FileDataSerializer::new(0))
                 .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
         }
         IgvmHeaderSection::HEADER_SECTION_DIRECTIVE => {
@@ -322,17 +322,30 @@ fn get_header_data(
     let igvm = handle_lock.get_mut()?;
     let mut header_data = FileDataSerializer::new(0);
 
-    if section == IgvmHeaderSection::HEADER_SECTION_DIRECTIVE {
-        let header = igvm
-            .file
-            .directive_headers
-            .get(index as usize)
-            .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
-        header
-            .write_binary_header(&mut Vec::<u8>::new(), &mut header_data)
-            .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
-    } else {
-        return Err(IgvmResult::IGVMAPI_INVALID_PARAMETER);
+    match section {
+        IgvmHeaderSection::HEADER_SECTION_INITIALIZATION => {
+            let header = igvm
+                .file
+                .initialization_headers
+                .get(index as usize)
+                .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
+            header
+                .write_binary_header(&mut Vec::<u8>::new(), &mut header_data)
+                .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
+        }
+        IgvmHeaderSection::HEADER_SECTION_DIRECTIVE => {
+            let header = igvm
+                .file
+                .directive_headers
+                .get(index as usize)
+                .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
+            header
+                .write_binary_header(&mut Vec::<u8>::new(), &mut header_data)
+                .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
+        }
+        _ => {
+            return Err(IgvmResult::IGVMAPI_INVALID_PARAMETER);
+        }
     }
 
     let header_data = header_data.take();

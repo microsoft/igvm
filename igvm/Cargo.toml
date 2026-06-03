@@ -53,3 +53,4 @@ static_assertions.workspace = true
 default = []
 capi = ["igvm-c"]
 igvm-c = [] # Add exports that allow the library to be used from C
+corim = ["igvm_defs/corim"]

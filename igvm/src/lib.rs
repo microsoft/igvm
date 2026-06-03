@@ -344,6 +344,21 @@ pub enum IgvmInitializationHeader {
         vp_index: u16,
         vtl: Vtl,
     },
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+    CorimDocument {
+        compatibility_mask: u32,
+        // FUTURE: have the corim document in a typed structure, with the
+        // required per-plaform fields.
+        document: Vec<u8>,
+    },
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+    CorimSignature {
+        compatibility_mask: u32,
+        // FUTURE: have the corim signature in a typed structure
+        signature: Vec<u8>,
+    },
 }
 
 impl IgvmInitializationHeader {
@@ -357,9 +372,13 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 size_of::<IGVM_VHS_PAGE_TABLE_RELOCATION>()
             }
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimDocument { .. } => size_of::<IGVM_VHS_CORIM_DATA>(),
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimSignature { .. } => size_of::<IGVM_VHS_CORIM_DATA>(),
         };
 
-        size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional
+        align_8(size_of::<IGVM_VHS_VARIABLE_HEADER>() + additional)
     }
 
     /// Get the [`IgvmVariableHeaderType`] for the initialization header.
@@ -375,6 +394,14 @@ impl IgvmInitializationHeader {
             }
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION
+            }
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimDocument { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
+            }
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimSignature { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE
             }
         }
     }
@@ -454,20 +481,52 @@ impl IgvmInitializationHeader {
 
                 Ok(())
             }
+            // TODO: validate CoRIM document has the minimum fields required
+            // described by the corresponding specification for that platform.
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimDocument { .. } => Ok(()),
+            // TODO: validate CoRIM signature has the right fields, and
+            // correctly signs the corresponding document. This requires crypto
+            // crates and might need to be gated behind a feature flag.
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimSignature { .. } => Ok(()),
         }
     }
 
     /// Create a new [`IgvmInitializationHeader`] from the binary slice provided.
     /// Returns the remaining slice of unused bytes.
-    fn new_from_binary_split(
-        mut variable_headers: &[u8],
-    ) -> Result<(Self, &[u8]), BinaryHeaderError> {
+    fn new_from_binary_split<'a>(
+        mut variable_headers: &'a [u8],
+        file_data: &'a [u8],
+        file_data_start: u32,
+    ) -> Result<(Self, &'a [u8]), BinaryHeaderError> {
         let IGVM_VHS_VARIABLE_HEADER { typ, length } =
             read_header::<IGVM_VHS_VARIABLE_HEADER>(&mut variable_headers)?;
 
         tracing::trace!(typ = ?typ, len = ?length, "trying to parse typ, len");
 
         let length = length as usize;
+
+        // Extract file data from a given file offset with the given size. File
+        // offset of 0 results in no data.
+        #[cfg(not(feature = "corim"))]
+        let _ = (file_data, file_data_start);
+
+        #[cfg(feature = "corim")]
+        let extract_file_data =
+            |file_offset: u32, size: usize| -> Result<Vec<u8>, BinaryHeaderError> {
+                if file_offset == 0 {
+                    return Ok(Vec::new());
+                }
+
+                let start = (file_offset - file_data_start) as usize;
+                let end = start + size;
+
+                file_data
+                    .get(start..end)
+                    .ok_or(BinaryHeaderError::InvalidDataSize)
+                    .map(|slice| slice.to_vec())
+            };
 
         let header = match typ {
             IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY
@@ -550,6 +609,46 @@ impl IgvmInitializationHeader {
                     vtl: vtl.try_into().map_err(|_| BinaryHeaderError::InvalidVtl)?,
                 }
             }
+            #[cfg(feature = "corim")]
+            IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
+                if length == size_of::<IGVM_VHS_CORIM_DATA>() =>
+            {
+                let IGVM_VHS_CORIM_DATA {
+                    compatibility_mask,
+                    reserved,
+                    file_offset,
+                    size_bytes,
+                } = read_header(&mut variable_headers)?;
+
+                if reserved != 0 {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask,
+                    document: extract_file_data(file_offset, size_bytes as usize)?,
+                }
+            }
+            #[cfg(feature = "corim")]
+            IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE
+                if length == size_of::<IGVM_VHS_CORIM_DATA>() =>
+            {
+                let IGVM_VHS_CORIM_DATA {
+                    compatibility_mask,
+                    reserved,
+                    file_offset,
+                    size_bytes,
+                } = read_header(&mut variable_headers)?;
+
+                if reserved != 0 {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask,
+                    signature: extract_file_data(file_offset, size_bytes as usize)?,
+                }
+            }
 
             _ => return Err(BinaryHeaderError::InvalidVariableHeaderType),
         };
@@ -572,12 +671,27 @@ impl IgvmInitializationHeader {
             PageTableRelocationRegion {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            #[cfg(feature = "corim")]
+            CorimDocument {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
+            #[cfg(feature = "corim")]
+            CorimSignature {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
         }
     }
 
-    fn write_binary_header(&self, variable_headers: &mut Vec<u8>) -> Result<(), BinaryHeaderError> {
+    fn write_binary_header(
+        &self,
+        variable_headers: &mut Vec<u8>,
+        file_data: &mut FileDataSerializer,
+    ) -> Result<(), BinaryHeaderError> {
         // Only serialize this header if valid.
         self.validate()?;
+
+        #[cfg(not(feature = "corim"))]
+        let _ = file_data;
 
         match self {
             IgvmInitializationHeader::GuestPolicy {
@@ -662,6 +776,50 @@ impl IgvmInitializationHeader {
                 append_header(
                     &info,
                     IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION,
+                    variable_headers,
+                );
+            }
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimDocument {
+                compatibility_mask,
+                document,
+            } => {
+                let file_offset = file_data.write_file_data(document);
+
+                let corim_document = IGVM_VHS_CORIM_DATA {
+                    compatibility_mask: *compatibility_mask,
+                    reserved: 0,
+                    file_offset,
+                    size_bytes: document
+                        .len()
+                        .try_into()
+                        .expect("corim document size must fit in u32"),
+                };
+                append_header(
+                    &corim_document,
+                    IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT,
+                    variable_headers,
+                );
+            }
+            #[cfg(feature = "corim")]
+            IgvmInitializationHeader::CorimSignature {
+                compatibility_mask,
+                signature,
+            } => {
+                let file_offset = file_data.write_file_data(signature);
+
+                let corim_signature = IGVM_VHS_CORIM_DATA {
+                    compatibility_mask: *compatibility_mask,
+                    reserved: 0,
+                    file_offset,
+                    size_bytes: signature
+                        .len()
+                        .try_into()
+                        .expect("corim signature size must fit in u32"),
+                };
+                append_header(
+                    &corim_signature,
+                    IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE,
                     variable_headers,
                 );
             }
@@ -947,6 +1105,15 @@ pub enum BinaryHeaderError {
     UnsupportedX64Register(#[from] registers::UnsupportedRegister<HvX64RegisterName>),
     #[error("unsupported AArch64 register")]
     UnsupportedAArch64Register(#[from] registers::UnsupportedRegister<HvArm64RegisterName>),
+    #[cfg(feature = "corim")]
+    #[error("multiple corim documents for a given compatibility mask {0:x}")]
+    MultipleCorimDocuments(u32),
+    #[cfg(feature = "corim")]
+    #[error("multiple corim signatures for a given compatibility mask {0:x}")]
+    MultipleCorimSignatures(u32),
+    #[cfg(feature = "corim")]
+    #[error("corim document missing for compatibility mask {0:x} with corresponding signature")]
+    MissingCorimDocument(u32),
 }
 
 impl IgvmDirectiveHeader {
@@ -1675,9 +1842,9 @@ impl IgvmDirectiveHeader {
                     return Err(BinaryHeaderError::UnalignedAddress(*gpa));
                 }
             }
-            //TODO: validate SNP
+            // TODO: validate SNP
             IgvmDirectiveHeader::SnpIdBlock { .. } => {}
-            //TODO: validate VBS
+            // TODO: validate VBS
             IgvmDirectiveHeader::VbsMeasurement { .. } => {}
         }
 
@@ -2423,6 +2590,16 @@ impl IgvmFile {
                 Ok(())
             };
 
+        // Track which compatibility masks have had a corim document header,
+        // only one allowed per compatibility mask.
+        #[cfg(feature = "corim")]
+        let mut corim_document_seen: [bool; 32] = [false; 32];
+
+        // Track which compatibility masks have a corim document signature, only
+        // one allowed per compatibility mask.
+        #[cfg(feature = "corim")]
+        let mut corim_document_signature_seen: [bool; 32] = [false; 32];
+
         for header in initialization_headers {
             // Each individual header needs to be valid.
             header
@@ -2504,7 +2681,48 @@ impl IgvmFile {
                     })
                 }
                 // TODO: validate SNP policy compatibility mask specifies SNP
-                _ => {}
+                IgvmInitializationHeader::GuestPolicy { .. } => {}
+                #[cfg(feature = "corim")]
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask, ..
+                } => {
+                    // Validate that there is at most 1 corim document header
+                    // for a given compatibility mask.
+                    for single_mask in extract_individual_masks(*compatibility_mask) {
+                        let mask_index = single_mask.trailing_zeros() as usize;
+                        if corim_document_seen[mask_index] {
+                            return Err(Error::InvalidBinaryInitializationHeader(
+                                BinaryHeaderError::MultipleCorimDocuments(single_mask),
+                            ));
+                        }
+                        corim_document_seen[mask_index] = true;
+                    }
+                }
+                #[cfg(feature = "corim")]
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask, ..
+                } => {
+                    // Validate that there is at most 1 corim document signature
+                    // for a given compatibility mask.
+                    for single_mask in extract_individual_masks(*compatibility_mask) {
+                        let mask_index = single_mask.trailing_zeros() as usize;
+
+                        if corim_document_signature_seen[mask_index] {
+                            return Err(Error::InvalidBinaryInitializationHeader(
+                                BinaryHeaderError::MultipleCorimSignatures(single_mask),
+                            ));
+                        }
+                        corim_document_signature_seen[mask_index] = true;
+
+                        // There must be a corim document for this compatibility
+                        // mask, before this header.
+                        if !corim_document_seen[mask_index] {
+                            return Err(Error::InvalidBinaryInitializationHeader(
+                                BinaryHeaderError::MissingCorimDocument(single_mask),
+                            ));
+                        }
+                    }
+                }
             }
         }
 
@@ -2699,16 +2917,16 @@ impl IgvmFile {
             }
         }
 
+        // dedup file data
+        let mut file_data = FileDataSerializer::new(file_data_section_start);
+
         // Add initialization headers
         for header in &self.initialization_headers {
             header
-                .write_binary_header(&mut variable_header_binary)
-                .map_err(Error::InvalidBinaryDirectiveHeader)?;
+                .write_binary_header(&mut variable_header_binary, &mut file_data)
+                .map_err(Error::InvalidBinaryInitializationHeader)?;
             assert_eq!(variable_header_binary.len() % 8, 0);
         }
-
-        // dedup file data
-        let mut file_data = FileDataSerializer::new(file_data_section_start);
 
         // Add directive headers
         for header in &self.directive_headers {
@@ -2945,9 +3163,12 @@ impl IgvmFile {
                         }
                     }
 
-                    let (header, new_slice) =
-                        IgvmInitializationHeader::new_from_binary_split(variable_headers)
-                            .map_err(Error::InvalidBinaryInitializationHeader)?;
+                    let (header, new_slice) = IgvmInitializationHeader::new_from_binary_split(
+                        variable_headers,
+                        file_data,
+                        file_data_start,
+                    )
+                    .map_err(Error::InvalidBinaryInitializationHeader)?;
 
                     variable_headers = new_slice;
 
@@ -3323,6 +3544,14 @@ impl IgvmFile {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
                 IgvmInitializationHeader::PageTableRelocationRegion {
+                    compatibility_mask, ..
+                } => fixup_mask(compatibility_mask),
+                #[cfg(feature = "corim")]
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask, ..
+                } => fixup_mask(compatibility_mask),
+                #[cfg(feature = "corim")]
+                IgvmInitializationHeader::CorimSignature {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
             }
@@ -4105,6 +4334,53 @@ mod tests {
         }
     }
 
+    /// Test an initialization variable header matches the supplied args. Also
+    /// tests round-trip serialization/deserialization.
+    fn test_init_variable_header<T: IntoBytes + Immutable + KnownLayout>(
+        header: IgvmInitializationHeader,
+        file_data_offset: u32,
+        header_type: IgvmVariableHeaderType,
+        expected_variable_binary_header: T,
+        expected_file_data: Option<Vec<u8>>,
+    ) {
+        let mut binary_header = Vec::new();
+        let mut file_data = FileDataSerializer::new(file_data_offset as usize);
+
+        header
+            .write_binary_header(&mut binary_header, &mut file_data)
+            .unwrap();
+
+        let file_data = file_data.take();
+
+        let common_header = IGVM_VHS_VARIABLE_HEADER::read_from_prefix(&binary_header[..])
+            .expect("variable header must be present")
+            .0;
+
+        assert_eq!(common_header.typ, header_type);
+        assert_eq!(
+            align_8(common_header.length as usize),
+            size_of_val(&expected_variable_binary_header)
+        );
+        assert_eq!(
+            &binary_header[size_of_val(&common_header)..],
+            expected_variable_binary_header.as_bytes()
+        );
+
+        match &expected_file_data {
+            Some(data) => assert_eq!(data, &file_data),
+            None => assert!(file_data.is_empty()),
+        }
+
+        let (reserialized_header, remaining) = IgvmInitializationHeader::new_from_binary_split(
+            &binary_header,
+            &file_data,
+            file_data_offset,
+        )
+        .unwrap();
+        assert!(remaining.is_empty());
+        assert_eq!(header, reserialized_header);
+    }
+
     // Test get binary header for each type.
     #[test]
     fn test_page_data() {
@@ -4687,5 +4963,245 @@ mod tests {
         )
     }
 
-    // Test serialize and deserialize
+    #[cfg(feature = "corim")]
+    #[test]
+    fn test_corim_document() {
+        let file_data_offset = 0x5000;
+        let document: Vec<u8> = vec![0xA1, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
+
+        let raw_header = IGVM_VHS_CORIM_DATA {
+            compatibility_mask: 0x1,
+            file_offset: file_data_offset,
+            size_bytes: document.len() as u32,
+            reserved: 0,
+        };
+
+        let header = IgvmInitializationHeader::CorimDocument {
+            compatibility_mask: 0x1,
+            document: document.clone(),
+        };
+
+        test_init_variable_header(
+            header,
+            file_data_offset,
+            IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT,
+            raw_header,
+            Some(document),
+        );
+    }
+
+    #[cfg(feature = "corim")]
+    #[test]
+    fn test_corim_signature() {
+        let file_data_offset = 0x6000;
+        let signature: Vec<u8> = vec![0xD2, 0x84, 0x43, 0xA1, 0x01, 0x26, 0xA0, 0x44];
+
+        let raw_header = IGVM_VHS_CORIM_DATA {
+            compatibility_mask: 0x1,
+            file_offset: file_data_offset,
+            size_bytes: signature.len() as u32,
+            reserved: 0,
+        };
+
+        let header = IgvmInitializationHeader::CorimSignature {
+            compatibility_mask: 0x1,
+            signature: signature.clone(),
+        };
+
+        test_init_variable_header(
+            header,
+            file_data_offset,
+            IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE,
+            raw_header,
+            Some(signature),
+        );
+    }
+
+    #[cfg(feature = "corim")]
+    mod corim {
+        use super::*;
+
+        // TODO: when corim payload validation is added, these tests need to be
+        // updated to have real documents.
+
+        fn validate(headers: &[IgvmInitializationHeader]) -> Result<(), Error> {
+            IgvmFile::validate_initialization_headers(
+                IgvmRevision::V2 {
+                    arch: Arch::X64,
+                    page_size: PAGE_SIZE_4K as u32,
+                },
+                headers,
+            )
+            .map(|_| ())
+        }
+
+        #[test]
+        fn test_basic_roundtrip() {
+            let data1 = vec![1; PAGE_SIZE_4K as usize];
+            let corim_doc = vec![0xA1, 0x02, 0x03, 0x04];
+            let corim_sig = vec![0xD2, 0x84, 0x43, 0xA1];
+
+            let file = IgvmFile {
+                revision: IgvmRevision::V2 {
+                    arch: Arch::X64,
+                    page_size: PAGE_SIZE_4K as u32,
+                },
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+                initialization_headers: vec![
+                    IgvmInitializationHeader::CorimDocument {
+                        compatibility_mask: 0x1,
+                        document: corim_doc.clone(),
+                    },
+                    IgvmInitializationHeader::CorimSignature {
+                        compatibility_mask: 0x1,
+                        signature: corim_sig.clone(),
+                    },
+                ],
+                directive_headers: vec![new_page_data(0, 1, &data1)],
+            };
+
+            let mut binary_file = Vec::new();
+            file.serialize(&mut binary_file).unwrap();
+
+            let deserialized = IgvmFile::new_from_binary(&binary_file, None).unwrap();
+            assert_igvm_equal(&file, &deserialized);
+        }
+
+        #[test]
+        fn test_corim_document_and_signature_valid() {
+            let headers = vec![
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document: vec![0x01, 0x02, 0x03],
+                },
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask: 0x1,
+                    signature: vec![0x04, 0x05, 0x06],
+                },
+            ];
+            assert!(validate(&headers).is_ok());
+        }
+
+        #[test]
+        fn test_corim_document_without_signature_valid() {
+            let headers = vec![IgvmInitializationHeader::CorimDocument {
+                compatibility_mask: 0x1,
+                document: vec![0x01, 0x02, 0x03],
+            }];
+            assert!(validate(&headers).is_ok());
+        }
+
+        #[test]
+        fn test_multiple_corim_documents_error() {
+            let headers = vec![
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document: vec![0x01, 0x02],
+                },
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document: vec![0x03, 0x04],
+                },
+            ];
+            assert!(matches!(
+                validate(&headers),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MultipleCorimDocuments(0x1)
+                ))
+            ));
+        }
+
+        #[test]
+        fn test_multiple_corim_documents_different_masks_valid() {
+            let headers = vec![
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document: vec![0x01, 0x02],
+                },
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x2,
+                    document: vec![0x03, 0x04],
+                },
+            ];
+            assert!(validate(&headers).is_ok());
+        }
+
+        #[test]
+        fn test_multiple_corim_signatures_error() {
+            let headers = vec![
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document: vec![0x01, 0x02],
+                },
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask: 0x1,
+                    signature: vec![0x03, 0x04],
+                },
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask: 0x1,
+                    signature: vec![0x05, 0x06],
+                },
+            ];
+            assert!(matches!(
+                validate(&headers),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MultipleCorimSignatures(0x1)
+                ))
+            ));
+        }
+
+        #[test]
+        fn test_corim_signature_without_document_error() {
+            let headers = vec![IgvmInitializationHeader::CorimSignature {
+                compatibility_mask: 0x1,
+                signature: vec![0x01, 0x02],
+            }];
+            assert!(matches!(
+                validate(&headers),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MissingCorimDocument(0x1)
+                ))
+            ));
+        }
+
+        #[test]
+        fn test_corim_signature_wrong_mask_missing_document() {
+            let headers = vec![
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document: vec![0x01, 0x02],
+                },
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask: 0x2,
+                    signature: vec![0x03, 0x04],
+                },
+            ];
+            assert!(matches!(
+                validate(&headers),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MissingCorimDocument(0x2)
+                ))
+            ));
+        }
+
+        #[test]
+        fn test_corim_combined_mask_duplicate_document() {
+            let headers = vec![
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x3,
+                    document: vec![0x01, 0x02],
+                },
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document: vec![0x03, 0x04],
+                },
+            ];
+            assert!(matches!(
+                validate(&headers),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MultipleCorimDocuments(0x1)
+                ))
+            ));
+        }
+    }
 }
