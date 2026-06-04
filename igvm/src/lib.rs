@@ -4617,6 +4617,7 @@ mod tests {
 
     /// Test an initialization variable header matches the supplied args. Also
     /// tests round-trip serialization/deserialization.
+    #[cfg(feature = "corim")]
     fn test_init_variable_header<T: IntoBytes + Immutable + KnownLayout>(
         header: IgvmInitializationHeader,
         file_data_offset: u32,
@@ -4926,7 +4927,7 @@ mod tests {
             );
 
             assert!(matches!(
-                IgvmInitializationHeader::new_from_binary_split(&binary_header),
+                IgvmInitializationHeader::new_from_binary_split(&binary_header, &[], 0),
                 Err(BinaryHeaderError::ReservedNotZero)
             ));
         };
@@ -5365,11 +5366,13 @@ mod tests {
         // updated to have real documents.
 
         fn validate(headers: &[IgvmInitializationHeader]) -> Result<(), Error> {
+            let platform_headers = [new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)];
             IgvmFile::validate_initialization_headers(
                 IgvmRevision::V2 {
                     arch: Arch::X64,
                     page_size: PAGE_SIZE_4K as u32,
                 },
+                &platform_headers,
                 headers,
             )
             .map(|_| ())
