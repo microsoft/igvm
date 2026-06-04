@@ -60,6 +60,7 @@ pub enum IgvmResult {
     IGVMAPI_UNSUPPORTED_PAGE_SIZE = -25,
     IGVMAPI_INVALID_FIXED_HEADER_ARCH = -26,
     IGVMAPI_MERGE_REVISION = -27,
+    IGVMAPI_INVALID_CCA_POLICY_COMPATIBILITY_MASK = -28,
 }
 
 type IgvmHandle = i32;
@@ -164,6 +165,9 @@ fn translate_error(error: Error) -> IgvmResult {
         Error::UnsupportedPageSize(_) => IgvmResult::IGVMAPI_UNSUPPORTED_PAGE_SIZE,
         Error::InvalidFixedHeaderArch(_) => IgvmResult::IGVMAPI_INVALID_FIXED_HEADER_ARCH,
         Error::MergeRevision => IgvmResult::IGVMAPI_MERGE_REVISION,
+        Error::InvalidCcaPolicyCompatibilityMask(_) => {
+            IgvmResult::IGVMAPI_INVALID_CCA_POLICY_COMPATIBILITY_MASK
+        }
     }
 }
 

@@ -64,6 +64,8 @@ pub enum IsolationType {
     Sev,
     /// This guest is isolated with SEV-ES (physical or emulated).
     SevEs,
+    /// This guest is isolated with Cca (physical or emulated).
+    Cca,
 }
 
 impl From<IsolationType> for igvm_defs::IgvmPlatformType {
@@ -75,6 +77,7 @@ impl From<IsolationType> for igvm_defs::IgvmPlatformType {
             IsolationType::Tdx => IgvmPlatformType::TDX,
             IsolationType::Sev => IgvmPlatformType::SEV,
             IsolationType::SevEs => IgvmPlatformType::SEV_ES,
+            IsolationType::Cca => IgvmPlatformType::CCA,
         }
     }
 }
@@ -262,6 +265,11 @@ impl IgvmPlatformHeader {
                         }
                         // TODO: shared gpa boundary req?
                     }
+                    IgvmPlatformType::CCA => {
+                        if info.platform_version != IGVM_CCA_PLATFORM_VERSION {
+                            return Err(BinaryHeaderError::InvalidPlatformVersion);
+                        }
+                    }
                     _ => {
                         return Err(BinaryHeaderError::InvalidPlatformType);
                     }
@@ -322,6 +330,13 @@ pub enum IgvmInitializationHeader {
         policy: u64,
         compatibility_mask: u32,
     },
+    CcaPolicy {
+        compatibility_mask: u32,
+        attributes_required_zeroes: u64,
+        attributes_required_ones: u64,
+        hash_algorithm: CcaHashAlgorithm,
+        lfa_policy: CcaLfaPolicy,
+    },
     RelocatableRegion {
         compatibility_mask: u32,
         relocation_alignment: u64,
@@ -366,6 +381,7 @@ impl IgvmInitializationHeader {
     fn header_size(&self) -> usize {
         let additional = match self {
             IgvmInitializationHeader::GuestPolicy { .. } => size_of::<IGVM_VHS_GUEST_POLICY>(),
+            IgvmInitializationHeader::CcaPolicy { .. } => size_of::<IGVM_VHS_CCA_POLICY>(),
             IgvmInitializationHeader::RelocatableRegion { .. } => {
                 size_of::<IGVM_VHS_RELOCATABLE_REGION>()
             }
@@ -389,6 +405,9 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::GuestPolicy { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY
             }
+            IgvmInitializationHeader::CcaPolicy { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_CCA_POLICY
+            }
             IgvmInitializationHeader::RelocatableRegion { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_RELOCATABLE_REGION
             }
@@ -408,12 +427,38 @@ impl IgvmInitializationHeader {
 
     /// Checks if this header contains valid state.
     fn validate(&self) -> Result<(), BinaryHeaderError> {
+        // Checker for the ones and zeroes bitmasks which are used by a few architectures.
+        fn validate_ones_zeroes_conflict(
+            required_zeroes: u64,
+            required_ones: u64,
+        ) -> Result<(), BinaryHeaderError> {
+            if required_zeroes & required_ones != 0 {
+                return Err(BinaryHeaderError::InvalidOnesZeroesMasks);
+            }
+
+            Ok(())
+        }
+
         match self {
             IgvmInitializationHeader::GuestPolicy {
                 policy: _,
                 compatibility_mask: _,
             } => {
                 // TODO: check policy bits?
+                Ok(())
+            }
+            IgvmInitializationHeader::CcaPolicy {
+                compatibility_mask: _,
+                attributes_required_zeroes,
+                attributes_required_ones,
+                hash_algorithm: _,
+                lfa_policy: _,
+            } => {
+                validate_ones_zeroes_conflict(
+                    *attributes_required_zeroes,
+                    *attributes_required_ones,
+                )?;
+
                 Ok(())
             }
             IgvmInitializationHeader::RelocatableRegion {
@@ -547,6 +592,31 @@ impl IgvmInitializationHeader {
                     compatibility_mask,
                 }
             }
+            IgvmVariableHeaderType::IGVM_VHT_CCA_POLICY
+                if length == size_of::<IGVM_VHS_CCA_POLICY>() =>
+            {
+                let IGVM_VHS_CCA_POLICY {
+                    compatibility_mask,
+                    reserved,
+                    attributes_required_zeroes,
+                    attributes_required_ones,
+                    hash_algorithm,
+                    lfa_policy,
+                    reserved2,
+                } = read_header(&mut variable_headers)?;
+
+                if reserved != 0 || reserved2 != [0; 6] {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+
+                IgvmInitializationHeader::CcaPolicy {
+                    compatibility_mask,
+                    attributes_required_zeroes,
+                    attributes_required_ones,
+                    hash_algorithm,
+                    lfa_policy,
+                }
+            }
             IgvmVariableHeaderType::IGVM_VHT_RELOCATABLE_REGION
                 if length == size_of::<IGVM_VHS_RELOCATABLE_REGION>() =>
             {
@@ -665,6 +735,9 @@ impl IgvmInitializationHeader {
             GuestPolicy {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            CcaPolicy {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
             RelocatableRegion {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
@@ -707,6 +780,29 @@ impl IgvmInitializationHeader {
                 append_header(
                     &info,
                     IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY,
+                    variable_headers,
+                );
+            }
+            IgvmInitializationHeader::CcaPolicy {
+                compatibility_mask,
+                attributes_required_zeroes,
+                attributes_required_ones,
+                hash_algorithm,
+                lfa_policy,
+            } => {
+                let info = IGVM_VHS_CCA_POLICY {
+                    compatibility_mask: *compatibility_mask,
+                    reserved: 0,
+                    attributes_required_zeroes: *attributes_required_zeroes,
+                    attributes_required_ones: *attributes_required_ones,
+                    hash_algorithm: *hash_algorithm,
+                    lfa_policy: *lfa_policy,
+                    reserved2: [0; 6],
+                };
+
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_CCA_POLICY,
                     variable_headers,
                 );
             }
@@ -882,6 +978,11 @@ pub enum IgvmDirectiveHeader {
         vtl: Vtl,
         registers: Vec<AArch64Register>,
         compatibility_mask: u32,
+    },
+    AArch64CcaVpContext {
+        compatibility_mask: u32,
+        vp_index: u16,
+        context: Box<IgvmVpContextAArch64Cca>,
     },
     ParameterInsert(IGVM_VHS_PARAMETER_INSERT),
     ErrorRange {
@@ -1089,6 +1190,8 @@ pub enum BinaryHeaderError {
     InvalidPlatformVersion,
     #[error("invalid shared gpa boundary")]
     InvalidSharedGpaBoundary,
+    #[error("invalid ones and zeroes masks")]
+    InvalidOnesZeroesMasks,
     #[error("reserved values not zero")]
     ReservedNotZero,
     #[error("VBS vp context has no registers")]
@@ -1137,6 +1240,7 @@ impl IgvmDirectiveHeader {
             IgvmDirectiveHeader::X64NativeVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::X64VbsVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::AArch64VbsVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
+            IgvmDirectiveHeader::AArch64CcaVpContext { .. } => size_of::<IGVM_VHS_VP_CONTEXT>(),
             IgvmDirectiveHeader::ParameterInsert(param) => size_of_val(param),
             IgvmDirectiveHeader::ErrorRange { .. } => size_of::<IGVM_VHS_ERROR_RANGE>(),
             IgvmDirectiveHeader::SnpIdBlock { .. } => size_of::<IGVM_VHS_SNP_ID_BLOCK>(),
@@ -1175,6 +1279,9 @@ impl IgvmDirectiveHeader {
                 IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
             }
             IgvmDirectiveHeader::AArch64VbsVpContext { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
+            }
+            IgvmDirectiveHeader::AArch64CcaVpContext { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT
             }
             IgvmDirectiveHeader::ParameterInsert(_) => {
@@ -1432,6 +1539,36 @@ impl IgvmDirectiveHeader {
                     variable_headers,
                 );
             }
+            IgvmDirectiveHeader::AArch64CcaVpContext {
+                compatibility_mask,
+                vp_index,
+                context,
+            } => {
+                // Pad file data to 4K.
+                let align_up_iter =
+                    std::iter::repeat_n(&0u8, PAGE_SIZE_4K as usize - context.as_bytes().len());
+                let data: Vec<u8> = context
+                    .as_bytes()
+                    .iter()
+                    .chain(align_up_iter)
+                    .copied()
+                    .collect();
+                let file_offset = file_data.write_file_data(&data);
+
+                let info = IGVM_VHS_VP_CONTEXT {
+                    gpa: 0.into(),
+                    compatibility_mask: *compatibility_mask,
+                    file_offset,
+                    vp_index: *vp_index,
+                    reserved: 0,
+                };
+
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+                    variable_headers,
+                );
+            }
             IgvmDirectiveHeader::X64VbsVpContext {
                 vtl,
                 registers,
@@ -1627,6 +1764,9 @@ impl IgvmDirectiveHeader {
             AArch64VbsVpContext {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            AArch64CcaVpContext {
+                compatibility_mask, ..
+            } => Some(*compatibility_mask),
             ParameterInsert(info) => Some(info.compatibility_mask),
             ErrorRange {
                 compatibility_mask, ..
@@ -1673,6 +1813,9 @@ impl IgvmDirectiveHeader {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
             AArch64VbsVpContext {
+                compatibility_mask, ..
+            } => Some(compatibility_mask),
+            AArch64CcaVpContext {
                 compatibility_mask, ..
             } => Some(compatibility_mask),
             ParameterInsert(info) => Some(&mut info.compatibility_mask),
@@ -1830,6 +1973,11 @@ impl IgvmDirectiveHeader {
                 vtl: _,
                 registers: _,
                 compatibility_mask: _,
+            } => {}
+            IgvmDirectiveHeader::AArch64CcaVpContext {
+                compatibility_mask: _,
+                vp_index: _,
+                context: _,
             } => {}
             IgvmDirectiveHeader::ParameterInsert(param) => {
                 if param.gpa % PAGE_SIZE_4K != 0 {
@@ -2068,6 +2216,35 @@ impl IgvmDirectiveHeader {
                             context,
                         }
                     }
+                    Some(IgvmPlatformType::CCA) => {
+                        // Read the context which is stored as 4K file data.
+                        let start = (header.file_offset - file_data_start) as usize;
+                        if file_data.len() < start {
+                            return Err(BinaryHeaderError::InvalidDataSize);
+                        }
+
+                        let data = file_data
+                            .get(start..)
+                            .and_then(|x| x.get(..PAGE_SIZE_4K as usize))
+                            .ok_or(BinaryHeaderError::InvalidDataSize)?;
+
+                        // Copy the context bytes into the context structure,
+                        // and validate the remaining bytes are 0.
+                        // todo: zerocopy: as of 0.8, can recover from allocation failure
+                        let mut context = IgvmVpContextAArch64Cca::new_box_zeroed().unwrap();
+                        let (context_slice, remaining) =
+                            data.split_at(size_of::<IgvmVpContextAArch64Cca>());
+                        context.as_mut_bytes().copy_from_slice(context_slice);
+                        if remaining.iter().any(|b| *b != 0) {
+                            return Err(BinaryHeaderError::InvalidContext);
+                        }
+
+                        IgvmDirectiveHeader::AArch64CcaVpContext {
+                            compatibility_mask: header.compatibility_mask,
+                            vp_index: header.vp_index,
+                            context,
+                        }
+                    }
                     _ => {
                         // Unsupported compatibility mask or isolation type
                         return Err(BinaryHeaderError::InvalidVpContextPlatformType);
@@ -2258,6 +2435,8 @@ pub enum Error {
     InvalidBinaryVariableHeaderSection,
     #[error("invalid checksum in fixed header, expected {expected} was {header_value}")]
     InvalidChecksum { expected: u32, header_value: u32 },
+    #[error("Cca policy compatibility mask 0x{0:x} does not reference a Cca platform")]
+    InvalidCcaPolicyCompatibilityMask(u32),
     #[error("page table relocation header specified twice for a compatibiltiy mask")]
     MultiplePageTableRelocationHeaders,
     #[error("relocation regions overlap")]
@@ -2537,6 +2716,14 @@ impl IgvmFile {
                                 });
                             }
                         }
+                        IgvmPlatformType::CCA => {
+                            if revision.arch() != Arch::AArch64 {
+                                return Err(Error::PlatformArchUnsupported {
+                                    arch: revision.arch(),
+                                    platform: info.platform_type,
+                                });
+                            }
+                        }
                         _ => return Err(Error::InvalidPlatformType),
                     }
 
@@ -2564,12 +2751,21 @@ impl IgvmFile {
     /// Returns additional info used to validate directive headers.
     fn validate_initialization_headers(
         revision: IgvmRevision,
+        platform_headers: &[IgvmPlatformHeader],
         initialization_headers: &[IgvmInitializationHeader],
     ) -> Result<DirectiveHeaderValidationInfo, Error> {
         let mut page_table_masks = 0;
         let mut used_vp_idents: Vec<VpIdentifier> = Vec::new();
         let mut reloc_regions: HashMap<u32, RangeMap<u64, ()>> = HashMap::new();
         let mut page_table_regions = Vec::new();
+        let platform_mask_map: HashMap<u32, IgvmPlatformType> = platform_headers
+            .iter()
+            .map(|header| match header {
+                IgvmPlatformHeader::SupportedPlatform(info) => {
+                    (info.compatibility_mask, info.platform_type)
+                }
+            })
+            .collect();
 
         let mut check_region_overlap =
             |compatibility_mask: u32, start: u64, size: u64| -> Result<(), Error> {
@@ -2614,6 +2810,22 @@ impl IgvmFile {
             //  - Keep track of which page table regions, vp_index, and vtls for
             //    use in validating directive headers.
             match header {
+                IgvmInitializationHeader::CcaPolicy {
+                    compatibility_mask, ..
+                } => {
+                    if !matches!(revision.arch(), Arch::AArch64) {
+                        return Err(Error::InvalidHeaderArch {
+                            arch: revision.arch(),
+                            header_type: "CcaPolicy".into(),
+                        });
+                    }
+
+                    for mask in extract_individual_masks(*compatibility_mask) {
+                        if platform_mask_map.get(&mask) != Some(&IgvmPlatformType::CCA) {
+                            return Err(Error::InvalidCcaPolicyCompatibilityMask(mask));
+                        }
+                    }
+                }
                 IgvmInitializationHeader::PageTableRelocationRegion {
                     compatibility_mask,
                     gpa,
@@ -2843,6 +3055,18 @@ impl IgvmFile {
                             && ident.vtl == *vtl)
                     })
                 }
+                IgvmDirectiveHeader::AArch64CcaVpContext {
+                    compatibility_mask: _,
+                    context: _,
+                    vp_index: _,
+                } => {
+                    if revision.arch() != Arch::AArch64 {
+                        return Err(Error::InvalidHeaderArch {
+                            arch: revision.arch(),
+                            header_type: "AArch64CcaVpContext".into(),
+                        });
+                    }
+                }
                 IgvmDirectiveHeader::ParameterInsert(info) => {
                     match parameter_areas.get_mut(&info.parameter_area_index) {
                         Some(state) if *state == ParameterAreaState::Allocated => {
@@ -3007,8 +3231,11 @@ impl IgvmFile {
         }
 
         Self::validate_platform_headers(revision, platform_headers.iter())?;
-        let validation_info =
-            Self::validate_initialization_headers(revision, &initialization_headers)?;
+        let validation_info = Self::validate_initialization_headers(
+            revision,
+            &platform_headers,
+            &initialization_headers,
+        )?;
         Self::validate_directive_headers(revision, &directive_headers, validation_info)?;
 
         Ok(Self {
@@ -3386,11 +3613,15 @@ impl IgvmFile {
                 other.platform_headers.iter()
             )
             .is_ok());
-            let self_info =
-                Self::validate_initialization_headers(self.revision, &self.initialization_headers)
-                    .expect("valid file");
+            let self_info = Self::validate_initialization_headers(
+                self.revision,
+                &self.platform_headers,
+                &self.initialization_headers,
+            )
+            .expect("valid file");
             let other_info = Self::validate_initialization_headers(
                 other.revision,
+                &other.platform_headers,
                 &other.initialization_headers,
             )
             .expect("valid file");
@@ -3540,6 +3771,9 @@ impl IgvmFile {
                     policy: _,
                     compatibility_mask,
                 } => fixup_mask(compatibility_mask),
+                IgvmInitializationHeader::CcaPolicy {
+                    compatibility_mask, ..
+                } => fixup_mask(compatibility_mask),
                 IgvmInitializationHeader::RelocatableRegion {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
@@ -3575,7 +3809,8 @@ impl IgvmFile {
                 | SnpIdBlock { .. }
                 | VbsMeasurement { .. }
                 | X64VbsVpContext { .. }
-                | AArch64VbsVpContext { .. } => {}
+                | AArch64VbsVpContext { .. }
+                | AArch64CcaVpContext { .. } => {}
                 ParameterArea {
                     parameter_area_index,
                     ..
@@ -3818,7 +4053,7 @@ mod tests {
         }
 
         #[test]
-        fn test_basic_v2_aarch64() {
+        fn test_basic_v2_aarch64_vbs() {
             let data1 = vec![1; PAGE_SIZE_4K as usize];
             let data2 = vec![2; PAGE_SIZE_4K as usize];
             let data3 = vec![3; PAGE_SIZE_4K as usize];
@@ -3846,6 +4081,52 @@ mod tests {
                         vtl: Vtl::Vtl0,
                         registers: vec![AArch64Register::X0(0x1234)],
                         compatibility_mask: 0x1,
+                    },
+                ],
+            };
+            let mut binary_file = Vec::new();
+            file.serialize(&mut binary_file).unwrap();
+
+            let deserialized_binary_file = IgvmFile::new_from_binary(&binary_file, None).unwrap();
+            assert_igvm_equal(&file, &deserialized_binary_file);
+        }
+
+        #[test]
+        fn test_basic_v2_aarch64_cca() {
+            let data1 = vec![1; PAGE_SIZE_4K as usize];
+            let data2 = vec![2; PAGE_SIZE_4K as usize];
+            let data3 = vec![3; PAGE_SIZE_4K as usize];
+            let data4 = vec![4; PAGE_SIZE_4K as usize];
+            let context = IgvmVpContextAArch64Cca::new_box_zeroed().unwrap();
+            let file = IgvmFile {
+                revision: IgvmRevision::V2 {
+                    arch: Arch::AArch64,
+                    page_size: PAGE_SIZE_4K as u32,
+                },
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::CCA)],
+                initialization_headers: vec![IgvmInitializationHeader::CcaPolicy {
+                    compatibility_mask: 0x1,
+                    attributes_required_zeroes: CCA_POLICY_ATTR_MEC,
+                    attributes_required_ones: CCA_POLICY_ATTR_DEBUG,
+                    hash_algorithm: CcaHashAlgorithm::SHA512,
+                    lfa_policy: CcaLfaPolicy::LFA_ALLOW,
+                }],
+                directive_headers: vec![
+                    new_page_data(0, 1, &data1),
+                    new_page_data(1, 1, &data2),
+                    new_page_data(2, 1, &data3),
+                    new_page_data(4, 1, &data4),
+                    new_page_data(10, 1, &data1),
+                    new_page_data(11, 1, &data2),
+                    new_page_data(12, 1, &data3),
+                    new_page_data(14, 1, &data4),
+                    new_parameter_area(0),
+                    new_parameter_usage(0),
+                    new_parameter_insert(20, 0, 1),
+                    IgvmDirectiveHeader::AArch64CcaVpContext {
+                        compatibility_mask: 0x1,
+                        vp_index: 0xabcd,
+                        context,
                     },
                 ],
             };
@@ -4336,6 +4617,7 @@ mod tests {
 
     /// Test an initialization variable header matches the supplied args. Also
     /// tests round-trip serialization/deserialization.
+    #[cfg(feature = "corim")]
     fn test_init_variable_header<T: IntoBytes + Immutable + KnownLayout>(
         header: IgvmInitializationHeader,
         file_data_offset: u32,
@@ -4632,6 +4914,65 @@ mod tests {
             Some(file_data),
             None,
         );
+    }
+
+    #[test]
+    fn test_cca_policy_reserved_must_be_zero() {
+        let assert_reserved_not_zero = |raw_header: IGVM_VHS_CCA_POLICY| {
+            let mut binary_header = Vec::new();
+            append_header(
+                &raw_header,
+                IgvmVariableHeaderType::IGVM_VHT_CCA_POLICY,
+                &mut binary_header,
+            );
+
+            assert!(matches!(
+                IgvmInitializationHeader::new_from_binary_split(&binary_header, &[], 0),
+                Err(BinaryHeaderError::ReservedNotZero)
+            ));
+        };
+
+        let raw_header = IGVM_VHS_CCA_POLICY {
+            compatibility_mask: 0x1,
+            reserved: 1,
+            attributes_required_zeroes: 0,
+            attributes_required_ones: 0,
+            hash_algorithm: CcaHashAlgorithm::SHA256,
+            lfa_policy: CcaLfaPolicy::LFA_DISALLOW,
+            reserved2: [0; 6],
+        };
+        assert_reserved_not_zero(raw_header);
+
+        let raw_header = IGVM_VHS_CCA_POLICY {
+            reserved: 0,
+            reserved2: [1, 0, 0, 0, 0, 0],
+            ..raw_header
+        };
+        assert_reserved_not_zero(raw_header);
+    }
+
+    #[test]
+    fn test_cca_policy_requires_cca_platform() {
+        let file = IgvmFile::new(
+            IgvmRevision::V2 {
+                arch: Arch::AArch64,
+                page_size: PAGE_SIZE_4K as u32,
+            },
+            vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+            vec![IgvmInitializationHeader::CcaPolicy {
+                compatibility_mask: 0x1,
+                attributes_required_zeroes: 0,
+                attributes_required_ones: 0,
+                hash_algorithm: CcaHashAlgorithm::SHA512,
+                lfa_policy: CcaLfaPolicy::LFA_ALLOW,
+            }],
+            vec![],
+        );
+
+        assert!(matches!(
+            file,
+            Err(Error::InvalidCcaPolicyCompatibilityMask(0x1))
+        ));
     }
 
     #[test]
@@ -5025,11 +5366,13 @@ mod tests {
         // updated to have real documents.
 
         fn validate(headers: &[IgvmInitializationHeader]) -> Result<(), Error> {
+            let platform_headers = [new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)];
             IgvmFile::validate_initialization_headers(
                 IgvmRevision::V2 {
                     arch: Arch::X64,
                     page_size: PAGE_SIZE_4K as u32,
                 },
+                &platform_headers,
                 headers,
             )
             .map(|_| ())
