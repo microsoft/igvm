@@ -24,6 +24,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 [features]
 default = []
 unstable = [] # For types that are not yet stabilized in an official version
+corim = [] # For CoRIM header types that are not yet stabilized in an official version
 
 [dependencies]
 bitfield-struct.workspace = true
