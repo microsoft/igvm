@@ -30,7 +30,7 @@ IGVM_LIBS = $(shell pkg-config --libs --static $(UNINSTALLED_PC))
 IGVM_LIBS_STATIC = $(subst $(IGVM_LIBS), -ligvm, $(LIBIGVM))
 
 # Determine igvm crate version from Cargo.toml
-VERSION = $(shell grep -oP "(?<=version = \").+(?=\")" $(IGVM_DIR)/igvm/Cargo.toml)
+VERSION = $(shell sed -n 's/^version = "\(.*\)"/\1/p' $(IGVM_DIR)/igvm/Cargo.toml)
 
 .PHONY: all build test clean install
 
