@@ -155,7 +155,7 @@ mod tests {
         let svn = le.triples()[0].svn();
 
         let bytes = super::build_corim_bytes(platform, &measurement, svn).unwrap();
-        corim::validate::decode_and_validate(&bytes).unwrap()
+        corim::validate::decode_and_validate_at(&bytes, 0).unwrap()
     }
 
     #[test]
