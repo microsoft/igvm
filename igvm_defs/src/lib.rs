@@ -241,6 +241,10 @@ pub enum IgvmVariableHeaderType {
     // These are IGVM_VHT_RANGE_INIT structures.
     /// The isolation architecture policy for the guest, as defined by
     /// [`IGVM_VHS_GUEST_POLICY`].
+    /// NOTE: This header is maintained for backwards compatability with older
+    ///       IGVM files, but newer files should use the individual policy
+    ///       header type and structure for each architecture. For example, CCA
+    ///       has defined IGVM_VHT_CCA_POLICY and IGVM_VHS_CCA_POLICY.
     IGVM_VHT_GUEST_POLICY = 0x101,
     /// A relocatable region structure described by
     /// [`IGVM_VHS_RELOCATABLE_REGION`].
@@ -248,6 +252,43 @@ pub enum IgvmVariableHeaderType {
     /// A page table relocation region described by
     /// [`IGVM_VHS_PAGE_TABLE_RELOCATION`].
     IGVM_VHT_PAGE_TABLE_RELOCATION_REGION = 0x103,
+    /// A CoRIM CBOR document for a given platform, described by
+    /// [`IGVM_VHS_CORIM_DATA`].
+    ///
+    /// The data described by this header is a CBOR CoRIM document, a
+    /// `tagged-unsigned-corim-map` as defined in section 4.1 of
+    /// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/. There may only
+    /// be one for a given platform. There may be an associated COSE_Sign1
+    /// structure for this document, see
+    /// [`IgvmVariableHeaderType::IGVM_VHT_CORIM_SIGNATURE`].
+    ///
+    /// The CoRIM document must adhere to the following specifications for each
+    /// platform:
+    ///
+    /// | Platform      | Specification |
+    /// |---------------|---------------|
+    /// | Intel TDX     | TBD           |
+    /// | VBS           | TBD           |
+    /// | AMD SEV-SNP   | TBD           |
+    /// | ARM CCA       | TBD           |
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+    IGVM_VHT_CORIM_DOCUMENT = 0x104,
+    /// A COSE_Sign1 structure for a detached CoRIM CBOR payload for a given
+    /// platform, described by [`IGVM_VHS_CORIM_DATA`].
+    ///
+    /// The payload measured by this CBOR is described by the corresponding
+    /// [`IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT`] structure, which
+    /// must be defined before this structure.
+    ///
+    /// For more information on the structure described by this header, see the
+    /// COSE_Sign1 structure described in section 4.2 in RFC
+    /// https://datatracker.ietf.org/doc/draft-ietf-rats-corim/.
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+    IGVM_VHT_CORIM_SIGNATURE = 0x105,
+    /// A CCA policy structure described by [`IGVM_VHS_CCA_POLICY`].
+    IGVM_VHT_CCA_POLICY = 0x106,
 
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
     /// A parameter area structure described by [`IGVM_VHS_PARAMETER_AREA`].
@@ -349,6 +390,9 @@ pub const IGVM_VHT_RANGE_PLATFORM: core::ops::RangeInclusive<u32> = 0x1..=0x100;
 pub const IGVM_VHT_RANGE_INIT: core::ops::RangeInclusive<u32> = 0x101..=0x200;
 /// The range of header types for directive structures.
 pub const IGVM_VHT_RANGE_DIRECTIVE: core::ops::RangeInclusive<u32> = 0x301..=0x400;
+/// When set in an [`IgvmVariableHeaderType`], the header may be ignored by
+/// loaders that do not recognize it.
+pub const IGVM_VHT_OPTIONAL_BIT: u32 = 1 << 31;
 
 /// The header describing each structure in the variable header section. Headers
 /// are aligned to 8 byte boundaries.
@@ -386,6 +430,10 @@ pub enum IgvmPlatformType {
     #[cfg(feature = "unstable")]
     #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
     SEV_ES = 0x05,
+    /// Arm CCA
+    #[cfg(feature = "unstable")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+    CCA = 0x06,
 }
 
 impl Default for IgvmPlatformType {
@@ -410,6 +458,10 @@ pub const IGVM_SEV_PLATFORM_VERSION: u16 = 0x1;
 #[cfg(feature = "unstable")]
 #[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
 pub const IGVM_SEV_ES_PLATFORM_VERSION: u16 = 0x1;
+/// Platform version for [`IgvmPlatformType::Cca`].
+#[cfg(feature = "unstable")]
+#[cfg_attr(docsrs, doc(cfg(feature = "unstable")))]
+pub const IGVM_CCA_PLATFORM_VERSION: u16 = 0x1;
 
 /// This structure indicates which isolation platforms are compatible with this
 /// guest image. A separate [`IGVM_VHS_SUPPORTED_PLATFORM`] structure must be
@@ -496,6 +548,61 @@ pub struct TdxPolicy {
     pub migratable: u8,
     #[bits(61)]
     pub reserved: u64,
+}
+
+/// Hash algorithms for Arm CCA used in [`CcaPolicy::hash_algorithm`].
+/// These algorithms correspond to those defined in the RMM specification,
+/// section "C2.24 RmmHashAlgorithm type".
+#[open_enum]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CcaHashAlgorithm {
+    /// SHA-256 hash algorithm
+    SHA256 = 0x0,
+    /// SHA-512 hash algorithm
+    SHA512 = 0x1,
+    /// SHA-384 hash algorithm
+    SHA384 = 0x2,
+}
+
+/// Live Firmware Activation (LFA) policies for Arm CCA used in [`CcaPolicy::lfa_policy`].
+#[open_enum]
+#[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum CcaLfaPolicy {
+    /// Components within the Realm's TCB cannot be updated via LFA while
+    /// the realm is running.
+    LFA_DISALLOW = 0x0,
+    /// Components within the Realm's TCB can be updated via LFA while
+    /// the realm is running.
+    LFA_ALLOW = 0x1,
+}
+
+/// Whether debug is allowed for the Realm.
+pub const CCA_POLICY_ATTR_DEBUG: u64 = 1 << 0;
+/// Whether the Memory Encryption Context (MEC) is shared.
+pub const CCA_POLICY_ATTR_MEC: u64 = 1 << 1;
+/// The Arm CCA policy used in [`IgvmVariableHeaderType::IGVM_VHT_CCA_POLICY`].
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
+pub struct IGVM_VHS_CCA_POLICY {
+    /// Compatibility mask.
+    pub compatibility_mask: u32,
+    /// Reserved, must be zero.
+    pub reserved: u32,
+    /// - `required_zeros = 1`, `required_ones = 0`: the bit must be clear.
+    /// - `required_zeros = 0`, `required_ones = 1`: the bit must be set.
+    /// - `required_zeros = 0`, `required_ones = 0`: the bit is don't-care.
+    /// - `required_zeros = 1`, `required_ones = 1`: invalid (conflict)
+    pub attributes_required_zeroes: u64,
+    /// Required ones for attributes.
+    pub attributes_required_ones: u64,
+    /// Hash algorithm to measure the initial state of the Realm.
+    pub hash_algorithm: CcaHashAlgorithm,
+    /// Live Firmware Activation (LFA) policy for the components within the Realm's TCB.
+    pub lfa_policy: CcaLfaPolicy,
+    /// Reserved, must be zero.
+    pub reserved2: [u8; 6],
 }
 
 /// This region describes VTL2.
@@ -976,6 +1083,9 @@ pub struct IgvmNativeVpContextX64 {
 ///
 /// The format consists of a [`VbsVpContextHeader`] followed by a
 /// `register_count` of [`VbsVpContextRegister`].
+///
+/// NOTE: we reuse [`VbsVpContextHeader`] and [`VbsVpContextHeader`] for ARM64
+/// CCA and `vtl` means `plane` when used for CCA.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
 pub struct VbsVpContextHeader {
@@ -999,6 +1109,47 @@ pub struct VbsVpContextRegister {
 }
 
 const_assert_eq!(size_of::<VbsVpContextRegister>(), 0x20);
+
+/// Format of [`IGVM_VHS_VP_CONTEXT`] file data for a native ARM64 CCA image.
+///
+/// The VP Context corresponds to the REC (Realm Execution Context) in CCA.
+/// Therefore, the fields listed below match those defined in the RMM
+/// specification, section "B4.6.69 RmiRecParams type".
+///
+/// These include the general-purpose registers x0–x7, the PC register,
+/// and a 64-bit flags field. All of these fields contribute to the
+/// RIM (Realm Initial Measurement).
+///
+/// One exception is `mpidr`, which is not included here because it is
+/// determined by the host and does not need to be specified in the
+/// IGVM file.
+///
+/// Any registers not explicitly specified here are initialized to their
+/// architectural reset values.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
+pub struct IgvmVpContextAArch64Cca {
+    /// X0 register.
+    pub x0: u64,
+    /// X1 register.
+    pub x1: u64,
+    /// X2 register.
+    pub x2: u64,
+    /// X3 register.
+    pub x3: u64,
+    /// X4 register.
+    pub x4: u64,
+    /// X5 register.
+    pub x5: u64,
+    /// X6 register.
+    pub x6: u64,
+    /// X7 register.
+    pub x7: u64,
+    /// Program counter.
+    pub pc: u64,
+    /// Flags for the context.
+    pub flags: u64,
+}
 
 /// This structure describes memory the IGVM file expects to be present in the
 /// guest. This is a hint to the loader that the guest will not function without
@@ -1236,4 +1387,20 @@ pub enum VbsSigningAlgorithm {
     INVALID = 0x0,
     /// ECDSA P384.
     ECDSA_P384 = 0x1,
+}
+
+/// A data payload descriptor for CoRIM document and signature headers.
+#[cfg(feature = "corim")]
+#[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes)]
+pub struct IGVM_VHS_CORIM_DATA {
+    /// Compatibility mask.
+    pub compatibility_mask: u32,
+    /// File offset for the CoRIM payload.
+    pub file_offset: u32,
+    /// Size in bytes of the CoRIM payload.
+    pub size_bytes: u32,
+    /// Reserved.
+    pub reserved: u32,
 }

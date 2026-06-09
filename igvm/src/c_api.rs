@@ -60,6 +60,11 @@ pub enum IgvmResult {
     IGVMAPI_UNSUPPORTED_PAGE_SIZE = -25,
     IGVMAPI_INVALID_FIXED_HEADER_ARCH = -26,
     IGVMAPI_MERGE_REVISION = -27,
+    IGVMAPI_INVALID_CCA_POLICY_COMPATIBILITY_MASK = -28,
+    #[cfg(feature = "corim")]
+    IGVMAPI_CORIM_GENERATION = -29,
+    #[cfg(feature = "corim")]
+    IGVMAPI_MEASUREMENT_FAILED = -30,
 }
 
 type IgvmHandle = i32;
@@ -164,6 +169,13 @@ fn translate_error(error: Error) -> IgvmResult {
         Error::UnsupportedPageSize(_) => IgvmResult::IGVMAPI_UNSUPPORTED_PAGE_SIZE,
         Error::InvalidFixedHeaderArch(_) => IgvmResult::IGVMAPI_INVALID_FIXED_HEADER_ARCH,
         Error::MergeRevision => IgvmResult::IGVMAPI_MERGE_REVISION,
+        Error::InvalidCcaPolicyCompatibilityMask(_) => {
+            IgvmResult::IGVMAPI_INVALID_CCA_POLICY_COMPATIBILITY_MASK
+        }
+        #[cfg(feature = "corim")]
+        Error::CorimGeneration(_) => IgvmResult::IGVMAPI_CORIM_GENERATION,
+        #[cfg(feature = "corim")]
+        Error::MeasurementFailed(_) => IgvmResult::IGVMAPI_MEASUREMENT_FAILED,
     }
 }
 
@@ -290,7 +302,7 @@ fn get_header(
                 .initialization_headers
                 .get(index as usize)
                 .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?
-                .write_binary_header(&mut header_binary)
+                .write_binary_header(&mut header_binary, &mut FileDataSerializer::new(0))
                 .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
         }
         IgvmHeaderSection::HEADER_SECTION_DIRECTIVE => {
@@ -322,17 +334,30 @@ fn get_header_data(
     let igvm = handle_lock.get_mut()?;
     let mut header_data = FileDataSerializer::new(0);
 
-    if section == IgvmHeaderSection::HEADER_SECTION_DIRECTIVE {
-        let header = igvm
-            .file
-            .directive_headers
-            .get(index as usize)
-            .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
-        header
-            .write_binary_header(&mut Vec::<u8>::new(), &mut header_data)
-            .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
-    } else {
-        return Err(IgvmResult::IGVMAPI_INVALID_PARAMETER);
+    match section {
+        IgvmHeaderSection::HEADER_SECTION_INITIALIZATION => {
+            let header = igvm
+                .file
+                .initialization_headers
+                .get(index as usize)
+                .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
+            header
+                .write_binary_header(&mut Vec::<u8>::new(), &mut header_data)
+                .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
+        }
+        IgvmHeaderSection::HEADER_SECTION_DIRECTIVE => {
+            let header = igvm
+                .file
+                .directive_headers
+                .get(index as usize)
+                .ok_or(IgvmResult::IGVMAPI_INVALID_PARAMETER)?;
+            header
+                .write_binary_header(&mut Vec::<u8>::new(), &mut header_data)
+                .map_err(|_| IgvmResult::IGVMAPI_INVALID_FILE)?;
+        }
+        _ => {
+            return Err(IgvmResult::IGVMAPI_INVALID_PARAMETER);
+        }
     }
 
     let header_data = header_data.take();
