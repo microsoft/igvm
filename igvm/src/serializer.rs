@@ -81,6 +81,7 @@ pub struct IgvmSerializer<'a> {
     measurements: Vec<IgvmPlatformMeasurement>,
     extra_init_headers: Vec<IgvmInitializationHeader>,
     extra_directive_headers: Vec<IgvmDirectiveHeader>,
+    suppressed_corim_masks: Vec<u32>,
 }
 
 impl<'a> IgvmSerializer<'a> {
@@ -104,6 +105,7 @@ impl<'a> IgvmSerializer<'a> {
             measurements: Vec::new(),
             extra_init_headers: Vec::new(),
             extra_directive_headers: Vec::new(),
+            suppressed_corim_masks: Vec::new(),
         };
 
         // Eagerly compute the launch measurement for every supported
@@ -155,22 +157,42 @@ impl<'a> IgvmSerializer<'a> {
         self.measurements.iter().find(|m| m.platform == platform)
     }
 
-    /// Get the raw CoRIM document bytes attached for the given platform,
-    /// if one was previously added via [`add_corim`](Self::add_corim).
+    /// Get the raw CoRIM document bytes effective for the given platform.
     ///
-    /// Returns `None` if the file has no platform header for `platform`,
-    /// or if no CoRIM has been attached for it yet.
+    /// Returns the document staged via [`add_corim`](Self::add_corim) if one
+    /// exists for the platform, otherwise the document embedded in the base
+    /// IGVM file (as produced at generation time). This lets a read-modify-
+    /// write caller (for example, one attaching a detached signature) fetch
+    /// the document a signature must be verified against without re-scanning
+    /// the file's initialization headers itself.
+    ///
+    /// Returns `None` if the file has no platform header for `platform`, or if
+    /// no CoRIM document is present for it in either location.
     #[cfg(feature = "corim")]
     #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
     pub fn corim_for(&self, platform: IgvmPlatformType) -> Option<&[u8]> {
         let compatibility_mask = self.lookup_compatibility_mask(platform).ok()?;
-        self.extra_init_headers.iter().find_map(|h| match h {
-            IgvmInitializationHeader::CorimDocument {
-                compatibility_mask: mask,
-                document,
-            } if *mask == compatibility_mask => Some(document.as_slice()),
-            _ => None,
-        })
+        // Prefer a staged addition (most recent wins), then fall back to the
+        // document embedded in the base file.
+        self.extra_init_headers
+            .iter()
+            .rev()
+            .find_map(|h| match h {
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: mask,
+                    document,
+                } if *mask == compatibility_mask => Some(document.as_slice()),
+                _ => None,
+            })
+            .or_else(|| {
+                self.file.initializations().iter().find_map(|h| match h {
+                    IgvmInitializationHeader::CorimDocument {
+                        compatibility_mask: mask,
+                        document,
+                    } if *mask == compatibility_mask => Some(document.as_slice()),
+                    _ => None,
+                })
+            })
     }
 
     /// Look up the compatibility mask for a platform type from the file's
@@ -301,6 +323,67 @@ impl<'a> IgvmSerializer<'a> {
         }
     }
 
+    /// Set the CoRIM signature for a platform while preserving its
+    /// corresponding CoRIM document.
+    ///
+    /// On serialize, any in-file CoRIM document/signature pair for this
+    /// platform's compatibility mask is suppressed and replaced with exactly
+    /// one CoRIM document (the existing one) and one CoRIM signature.
+    ///
+    /// This keeps CoRIM document/signature ordering valid and avoids callers
+    /// needing to reconstruct a full [`IgvmFile`] just to patch signatures.
+    #[cfg(feature = "corim")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
+    pub fn set_corim_signature(
+        &mut self,
+        platform: IgvmPlatformType,
+        signature: Vec<u8>,
+    ) -> Result<&[u8], Error> {
+        let compatibility_mask = self.lookup_compatibility_mask(platform)?;
+
+        // Resolve the effective document (staged addition or base file) that
+        // will be re-emitted alongside the new signature.
+        let existing_document = self.corim_for(platform).map(|d| d.to_vec()).ok_or_else(|| {
+            Error::CorimGeneration(format!(
+                "no CoRIM document found for {platform:?} (compatibility mask 0x{compatibility_mask:X})"
+            ))
+        })?;
+
+        if !self.suppressed_corim_masks.contains(&compatibility_mask) {
+            self.suppressed_corim_masks.push(compatibility_mask);
+        }
+
+        self.extra_init_headers.retain(|h| match h {
+            IgvmInitializationHeader::CorimDocument {
+                compatibility_mask: mask,
+                ..
+            }
+            | IgvmInitializationHeader::CorimSignature {
+                compatibility_mask: mask,
+                ..
+            } => *mask != compatibility_mask,
+            _ => true,
+        });
+
+        self.extra_init_headers
+            .push(IgvmInitializationHeader::CorimDocument {
+                compatibility_mask,
+                document: existing_document,
+            });
+        self.extra_init_headers
+            .push(IgvmInitializationHeader::CorimSignature {
+                compatibility_mask,
+                signature,
+            });
+
+        match self.extra_init_headers.last() {
+            Some(IgvmInitializationHeader::CorimSignature { signature, .. }) => {
+                Ok(signature.as_slice())
+            }
+            _ => unreachable!("just pushed a CorimSignature"),
+        }
+    }
+
     /// Resolve a [`LaunchMeasurement`]'s populated measurements and CES
     /// triples into the internal builder form, then build the CoRIM bytes.
     #[cfg(feature = "corim")]
@@ -400,6 +483,18 @@ impl<'a> IgvmSerializer<'a> {
             // Clone the file and append the extra headers so that
             // the original IgvmFile::serialize handles all the work.
             let mut file = self.file.clone();
+            file.initializations_mut().retain(|h| {
+                let mask = match h {
+                    IgvmInitializationHeader::CorimDocument {
+                        compatibility_mask, ..
+                    }
+                    | IgvmInitializationHeader::CorimSignature {
+                        compatibility_mask, ..
+                    } => *compatibility_mask,
+                    _ => return true,
+                };
+                !self.suppressed_corim_masks.contains(&mask)
+            });
             file.initializations_mut()
                 .extend(self.extra_init_headers.iter().cloned());
             file.directives_mut()
@@ -495,6 +590,36 @@ mod tests {
             vec![
                 new_page_data(0, 1, &[0xEE; PAGE_SIZE_4K as usize]),
                 new_page_data(1, 1, &[0xFF; PAGE_SIZE_4K as usize]),
+            ],
+        )
+        .unwrap()
+    }
+
+    fn make_vbs_file_with_corim(document: Vec<u8>, signature: Vec<u8>) -> IgvmFile {
+        IgvmFile::new(
+            IgvmRevision::V2 {
+                arch: Arch::X64,
+                page_size: PAGE_SIZE_4K as u32,
+            },
+            vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+            vec![
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask: 0x1,
+                    document,
+                },
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask: 0x1,
+                    signature,
+                },
+            ],
+            vec![
+                new_page_data(0, 1, &[0xAA; PAGE_SIZE_4K as usize]),
+                new_page_data(1, 1, &[0xBB; PAGE_SIZE_4K as usize]),
+                crate::IgvmDirectiveHeader::X64VbsVpContext {
+                    vtl: Vtl::Vtl0,
+                    registers: vec![X86Register::Rip(0x1000)],
+                    compatibility_mask: 0x1,
+                },
             ],
         )
         .unwrap()
@@ -795,6 +920,78 @@ mod tests {
 
         // The original file should not have been mutated.
         assert_eq!(file.directives().len(), directive_count_before);
+    }
+
+    #[test]
+    fn set_corim_signature_preserves_document_and_updates_signature() {
+        let original_document = b"existing-corim-document".to_vec();
+        let original_signature = b"old-signature".to_vec();
+        let new_signature = b"new-signature".to_vec();
+
+        let file = make_vbs_file_with_corim(original_document.clone(), original_signature);
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+
+        serializer
+            .set_corim_signature(IgvmPlatformType::VSM_ISOLATION, new_signature.clone())
+            .unwrap();
+
+        let mut output = Vec::new();
+        serializer.serialize(&mut output).unwrap();
+
+        let deserialized = IgvmFile::new_from_binary(&output, None).unwrap();
+        let mut found_document = None;
+        let mut found_signature = None;
+        let mut document_index = None;
+        let mut signature_index = None;
+        for (idx, h) in deserialized.initializations().iter().enumerate() {
+            match h {
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask,
+                    document,
+                } if *compatibility_mask == 0x1 => {
+                    found_document = Some(document.clone());
+                    document_index = Some(idx);
+                }
+                IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask,
+                    signature,
+                } if *compatibility_mask == 0x1 => {
+                    found_signature = Some(signature.clone());
+                    signature_index = Some(idx);
+                }
+                _ => {}
+            }
+        }
+
+        assert_eq!(found_document, Some(original_document));
+        assert_eq!(found_signature, Some(new_signature));
+        assert!(document_index.is_some());
+        assert!(signature_index.is_some());
+        assert!(document_index.unwrap() < signature_index.unwrap());
+    }
+
+    #[test]
+    fn set_corim_signature_requires_existing_document() {
+        let file = make_vbs_file();
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+
+        let err = serializer
+            .set_corim_signature(IgvmPlatformType::VSM_ISOLATION, b"new-sig".to_vec())
+            .unwrap_err();
+        assert!(err.to_string().contains("no CoRIM document found"));
+    }
+
+    #[test]
+    fn file_not_mutated_after_set_corim_signature() {
+        let file = make_vbs_file_with_corim(b"doc".to_vec(), b"sig".to_vec());
+        let init_before = file.initializations().to_vec();
+
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+        serializer
+            .set_corim_signature(IgvmPlatformType::VSM_ISOLATION, b"new-sig".to_vec())
+            .unwrap();
+
+        assert_eq!(file.initializations(), init_before.as_slice());
     }
 
     // -- Two-stage builder tests -------------------------------------
