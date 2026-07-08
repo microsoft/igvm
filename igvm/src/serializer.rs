@@ -47,6 +47,7 @@
 
 use crate::CorimTemplate;
 use crate::Error;
+use crate::IgvmDirectiveHeader;
 use crate::IgvmFile;
 use crate::IgvmInitializationHeader;
 use crate::IgvmPlatformHeader;
@@ -79,6 +80,7 @@ pub struct IgvmSerializer<'a> {
     file: &'a IgvmFile,
     measurements: Vec<IgvmPlatformMeasurement>,
     extra_init_headers: Vec<IgvmInitializationHeader>,
+    extra_directive_headers: Vec<IgvmDirectiveHeader>,
 }
 
 impl<'a> IgvmSerializer<'a> {
@@ -101,6 +103,7 @@ impl<'a> IgvmSerializer<'a> {
             file,
             measurements: Vec::new(),
             extra_init_headers: Vec::new(),
+            extra_directive_headers: Vec::new(),
         };
 
         // Eagerly compute the launch measurement for every supported
@@ -367,21 +370,40 @@ impl<'a> IgvmSerializer<'a> {
         .map_err(|e| Error::CorimGeneration(e.to_string()))
     }
 
+    /// Attach an extra directive header that will be appended when
+    /// serializing.
+    ///
+    /// This allows callers to stage workflows that need the already-cached
+    /// launch measurement from [`new`](Self::new), then add a directive
+    /// derived from that measurement (for example,
+    /// [`IgvmDirectiveHeader::SnpIdBlock`]) before the final serialize.
+    ///
+    /// Added directives are not included in the measurement cache computed
+    /// during [`new`](Self::new).
+    pub fn add_directive(&mut self, directive: IgvmDirectiveHeader) -> &IgvmDirectiveHeader {
+        self.extra_directive_headers.push(directive);
+        self.extra_directive_headers
+            .last()
+            .expect("just pushed a directive")
+    }
+
     /// Serialize the IGVM file to binary format, including any CoRIM
     /// documents that were added via [`add_corim`](Self::add_corim).
     ///
     /// This produces the same binary format as [`IgvmFile::serialize`],
-    /// but with additional initialization headers appended.
+    /// but with additional initialization headers and directives appended.
     pub fn serialize(&self, output: &mut Vec<u8>) -> Result<(), Error> {
-        if self.extra_init_headers.is_empty() {
+        if self.extra_init_headers.is_empty() && self.extra_directive_headers.is_empty() {
             // Fast path: nothing added, delegate directly.
             self.file.serialize(output)
         } else {
-            // Clone the file and append the extra init headers so that
+            // Clone the file and append the extra headers so that
             // the original IgvmFile::serialize handles all the work.
             let mut file = self.file.clone();
             file.initializations_mut()
                 .extend(self.extra_init_headers.iter().cloned());
+            file.directives_mut()
+                .extend(self.extra_directive_headers.iter().cloned());
             file.serialize(output)
         }
     }
@@ -400,6 +422,8 @@ mod tests {
     use igvm_defs::IgvmPageDataFlags;
     use igvm_defs::IgvmPageDataType;
     use igvm_defs::IgvmPlatformType;
+    use igvm_defs::IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY;
+    use igvm_defs::IGVM_VHS_SNP_ID_BLOCK_SIGNATURE;
     use igvm_defs::IGVM_VHS_SUPPORTED_PLATFORM;
     use igvm_defs::PAGE_SIZE_4K;
 
@@ -474,6 +498,41 @@ mod tests {
             ],
         )
         .unwrap()
+    }
+
+    fn new_snp_id_block(mask: u32, ld: [u8; 48]) -> crate::IgvmDirectiveHeader {
+        crate::IgvmDirectiveHeader::SnpIdBlock {
+            compatibility_mask: mask,
+            author_key_enabled: 0,
+            reserved: [0; 3],
+            ld,
+            family_id: [0; 16],
+            image_id: [0; 16],
+            version: 1,
+            guest_svn: 1,
+            id_key_algorithm: 0,
+            author_key_algorithm: 0,
+            id_key_signature: Box::new(IGVM_VHS_SNP_ID_BLOCK_SIGNATURE {
+                r_comp: [0; 72],
+                s_comp: [0; 72],
+            }),
+            id_public_key: Box::new(IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY {
+                curve: 0,
+                reserved: 0,
+                qx: [0; 72],
+                qy: [0; 72],
+            }),
+            author_key_signature: Box::new(IGVM_VHS_SNP_ID_BLOCK_SIGNATURE {
+                r_comp: [0; 72],
+                s_comp: [0; 72],
+            }),
+            author_public_key: Box::new(IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY {
+                curve: 0,
+                reserved: 0,
+                qx: [0; 72],
+                qy: [0; 72],
+            }),
+        }
     }
 
     // -- Basic serializer tests --------------------------------------
@@ -686,6 +745,56 @@ mod tests {
 
         // The original file should not have been mutated
         assert_eq!(file.initializations().len(), init_count_before);
+    }
+
+    #[test]
+    fn add_directive_snp_id_block_appended_and_measurement_unchanged() {
+        let file = make_snp_file();
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+
+        // Capture the eagerly-computed SNP launch digest (stage 1).
+        let digest_before = serializer
+            .measurement_for(IgvmPlatformType::SEV_SNP)
+            .expect("SNP measurement should be present")
+            .digest
+            .clone();
+        let mut ld = [0u8; 48];
+        ld.copy_from_slice(&digest_before);
+
+        // Stage 2: add a synthetic SNP ID block built from that digest.
+        serializer.add_directive(new_snp_id_block(0x1, ld));
+
+        // Cached measurement must remain the one computed during `new`.
+        let digest_after = serializer
+            .measurement_for(IgvmPlatformType::SEV_SNP)
+            .expect("SNP measurement should still be present")
+            .digest
+            .clone();
+        assert_eq!(digest_before, digest_after);
+
+        // Final serialize should include the extra directive exactly once.
+        let mut output = Vec::new();
+        serializer.serialize(&mut output).unwrap();
+
+        let deserialized = IgvmFile::new_from_binary(&output, None).unwrap();
+        let id_blocks = deserialized
+            .directives()
+            .iter()
+            .filter(|h| matches!(h, crate::IgvmDirectiveHeader::SnpIdBlock { .. }))
+            .count();
+        assert_eq!(id_blocks, 1);
+    }
+
+    #[test]
+    fn file_not_mutated_after_add_directive() {
+        let file = make_snp_file();
+        let directive_count_before = file.directives().len();
+
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+        serializer.add_directive(new_snp_id_block(0x1, [0x11; 48]));
+
+        // The original file should not have been mutated.
+        assert_eq!(file.directives().len(), directive_count_before);
     }
 
     // -- Two-stage builder tests -------------------------------------

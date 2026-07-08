@@ -3546,6 +3546,12 @@ impl IgvmFile {
         self.directive_headers.as_slice()
     }
 
+    /// Get a mutable reference to the directive headers in this file.
+    #[cfg(feature = "corim")]
+    pub(crate) fn directives_mut(&mut self) -> &mut Vec<IgvmDirectiveHeader> {
+        &mut self.directive_headers
+    }
+
     /// Get the relocation regions and page table builder in this file for a
     /// given compatibility mask. If relocation is not supported, None is
     /// returned.
