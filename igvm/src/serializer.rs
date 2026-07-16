@@ -82,6 +82,7 @@ pub struct IgvmSerializer<'a> {
     extra_init_headers: Vec<IgvmInitializationHeader>,
     extra_directive_headers: Vec<IgvmDirectiveHeader>,
     suppressed_corim_masks: Vec<u32>,
+    suppress_igvm_version: bool,
 }
 
 impl<'a> IgvmSerializer<'a> {
@@ -106,6 +107,7 @@ impl<'a> IgvmSerializer<'a> {
             extra_init_headers: Vec::new(),
             extra_directive_headers: Vec::new(),
             suppressed_corim_masks: Vec::new(),
+            suppress_igvm_version: false,
         };
 
         // Eagerly compute the launch measurement for every supported
@@ -453,6 +455,41 @@ impl<'a> IgvmSerializer<'a> {
         .map_err(|e| Error::CorimGeneration(e.to_string()))
     }
 
+    /// Set the IGVM version header for the file.
+    ///
+    /// The version describes the contents of the IGVM file as a whole as a
+    /// `major.minor.patch.revision` tuple, so at most one version header may
+    /// be present. Calling this replaces any version header previously staged
+    /// on the serializer, and any version header present in the base file is
+    /// suppressed when the output is serialized so that exactly one remains.
+    pub fn set_igvm_version(
+        &mut self,
+        major: u16,
+        minor: u16,
+        patch: u16,
+        revision: u16,
+    ) -> &IgvmInitializationHeader {
+        // Drop any version header previously staged on this serializer.
+        self.extra_init_headers
+            .retain(|h| !matches!(h, IgvmInitializationHeader::IgvmVersion { .. }));
+
+        // Suppress any version header present in the base file so that only
+        // the one set here remains after serialization.
+        self.suppress_igvm_version = true;
+
+        self.extra_init_headers
+            .push(IgvmInitializationHeader::IgvmVersion {
+                major,
+                minor,
+                patch,
+                revision,
+            });
+
+        self.extra_init_headers
+            .last()
+            .expect("just pushed a version header")
+    }
+
     /// Attach an extra directive header that will be appended when
     /// serializing.
     ///
@@ -476,24 +513,25 @@ impl<'a> IgvmSerializer<'a> {
     /// This produces the same binary format as [`IgvmFile::serialize`],
     /// but with additional initialization headers and directives appended.
     pub fn serialize(&self, output: &mut Vec<u8>) -> Result<(), Error> {
-        if self.extra_init_headers.is_empty() && self.extra_directive_headers.is_empty() {
+        if self.extra_init_headers.is_empty()
+            && self.extra_directive_headers.is_empty()
+            && !self.suppress_igvm_version
+        {
             // Fast path: nothing added, delegate directly.
             self.file.serialize(output)
         } else {
             // Clone the file and append the extra headers so that
             // the original IgvmFile::serialize handles all the work.
             let mut file = self.file.clone();
-            file.initializations_mut().retain(|h| {
-                let mask = match h {
-                    IgvmInitializationHeader::CorimDocument {
-                        compatibility_mask, ..
-                    }
-                    | IgvmInitializationHeader::CorimSignature {
-                        compatibility_mask, ..
-                    } => *compatibility_mask,
-                    _ => return true,
-                };
-                !self.suppressed_corim_masks.contains(&mask)
+            file.initializations_mut().retain(|h| match h {
+                IgvmInitializationHeader::CorimDocument {
+                    compatibility_mask, ..
+                }
+                | IgvmInitializationHeader::CorimSignature {
+                    compatibility_mask, ..
+                } => !self.suppressed_corim_masks.contains(compatibility_mask),
+                IgvmInitializationHeader::IgvmVersion { .. } => !self.suppress_igvm_version,
+                _ => true,
             });
             file.initializations_mut()
                 .extend(self.extra_init_headers.iter().cloned());
@@ -920,6 +958,116 @@ mod tests {
 
         // The original file should not have been mutated.
         assert_eq!(file.directives().len(), directive_count_before);
+    }
+
+    #[test]
+    fn set_igvm_version_appended_once() {
+        let file = make_vbs_file();
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+
+        serializer.set_igvm_version(1, 2, 3, 4);
+
+        let mut output = Vec::new();
+        serializer.serialize(&mut output).unwrap();
+
+        let deserialized = IgvmFile::new_from_binary(&output, None).unwrap();
+        let versions: Vec<_> = deserialized
+            .initializations()
+            .iter()
+            .filter_map(|h| match h {
+                IgvmInitializationHeader::IgvmVersion {
+                    major,
+                    minor,
+                    patch,
+                    revision,
+                } => Some((*major, *minor, *patch, *revision)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(versions, vec![(1, 2, 3, 4)]);
+    }
+
+    #[test]
+    fn set_igvm_version_replaces_existing() {
+        // Build a file that already declares a version header.
+        let file = IgvmFile::new(
+            IgvmRevision::V2 {
+                arch: Arch::X64,
+                page_size: PAGE_SIZE_4K as u32,
+            },
+            vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+            vec![IgvmInitializationHeader::IgvmVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+                revision: 0,
+            }],
+            vec![new_page_data(0, 1, &[0xAA; PAGE_SIZE_4K as usize])],
+        )
+        .unwrap();
+
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+        serializer.set_igvm_version(2, 5, 7, 9);
+
+        let mut output = Vec::new();
+        serializer.serialize(&mut output).unwrap();
+
+        let deserialized = IgvmFile::new_from_binary(&output, None).unwrap();
+        let versions: Vec<_> = deserialized
+            .initializations()
+            .iter()
+            .filter_map(|h| match h {
+                IgvmInitializationHeader::IgvmVersion {
+                    major,
+                    minor,
+                    patch,
+                    revision,
+                } => Some((*major, *minor, *patch, *revision)),
+                _ => None,
+            })
+            .collect();
+        // The base file's version is suppressed; only the new one remains.
+        assert_eq!(versions, vec![(2, 5, 7, 9)]);
+    }
+
+    #[test]
+    fn set_igvm_version_last_call_wins() {
+        let file = make_vbs_file();
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+
+        serializer.set_igvm_version(1, 0, 0, 0);
+        serializer.set_igvm_version(9, 8, 7, 6);
+
+        let mut output = Vec::new();
+        serializer.serialize(&mut output).unwrap();
+
+        let deserialized = IgvmFile::new_from_binary(&output, None).unwrap();
+        let versions: Vec<_> = deserialized
+            .initializations()
+            .iter()
+            .filter_map(|h| match h {
+                IgvmInitializationHeader::IgvmVersion {
+                    major,
+                    minor,
+                    patch,
+                    revision,
+                } => Some((*major, *minor, *patch, *revision)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(versions, vec![(9, 8, 7, 6)]);
+    }
+
+    #[test]
+    fn file_not_mutated_after_set_igvm_version() {
+        let file = make_vbs_file();
+        let init_count_before = file.initializations().len();
+
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+        serializer.set_igvm_version(1, 2, 3, 4);
+
+        // The original file should not have been mutated.
+        assert_eq!(file.initializations().len(), init_count_before);
     }
 
     #[test]
