@@ -23,5 +23,5 @@ sha2 = { version = "0.11", default-features = false }
 static_assertions = "1.1"
 thiserror = "2.0"
 tracing = "0.1"
-uuid = { version = "1", default-features = false, features = ["v5"] }
+uuid = { version = "1", default-features = false }
 zerocopy = { version = "0.8.14", features = ["derive"] }

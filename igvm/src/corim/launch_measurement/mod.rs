@@ -47,14 +47,35 @@ pub use igvm_defs::IgvmPlatformType;
 
 use crate::CorimTemplate;
 
-/// Fixed namespace UUID for deterministic CoMID tag-id derivation.
-///
-/// `tag-id = UUIDv5(TAG_ID_NAMESPACE, "{vendor}/{model}")`
-pub const TAG_ID_NAMESPACE: uuid::Uuid = uuid::Uuid::from_bytes([
-    0x85, 0xf3, 0xf1, 0xc2, 0x22, 0xa8, 0x44, 0x1e, 0xa1, 0xb9, 0xbc, 0xcf, 0xb6, 0x3e, 0xd5, 0xf7,
-]);
-
 // -- Profile catalog ----------------------------------------------------
+
+// Fixed namespace UUID for deterministic CoMID tag-id derivation.
+//
+// The per-platform `tag_id` values in `known_platforms` are precomputed as
+// `UUIDv5(TAG_ID_NAMESPACE, "{vendor}/{model}")` per RFC 9562 Sec. 4, where
+// `TAG_ID_NAMESPACE` is the fixed namespace UUID
+// `85f3f1c2-22a8-441e-a1b9-bccfb63ed5f7`
+// (bytes: `85 f3 f1 c2 22 a8 44 1e a1 b9 bc cf b6 3e d5 f7`). They are
+// hardcoded so the crate does not need a runtime SHA-1 implementation; the
+// per-platform round-trip tests assert the resulting tag-id strings.
+
+/// Precomputed tag-id for the Intel/TDX platform
+/// (`e0510081-7b78-5b2a-97a6-d73d890e07b6`).
+const TDX_TAG_ID: [u8; 16] = [
+    0xe0, 0x51, 0x00, 0x81, 0x7b, 0x78, 0x5b, 0x2a, 0x97, 0xa6, 0xd7, 0x3d, 0x89, 0x0e, 0x07, 0xb6,
+];
+
+/// Precomputed tag-id for the AMD/SEV-SNP platform
+/// (`77e8061e-4634-5e53-a848-d1d09e996843`).
+const SEV_SNP_TAG_ID: [u8; 16] = [
+    0x77, 0xe8, 0x06, 0x1e, 0x46, 0x34, 0x5e, 0x53, 0xa8, 0x48, 0xd1, 0xd0, 0x9e, 0x99, 0x68, 0x43,
+];
+
+/// Precomputed tag-id for the Microsoft/VBS platform
+/// (`2e29068e-e0fa-59e6-b0ff-3bfe09132e13`).
+const VBS_TAG_ID: [u8; 16] = [
+    0x2e, 0x29, 0x06, 0x8e, 0xe0, 0xfa, 0x59, 0xe6, 0xb0, 0xff, 0x3b, 0xfe, 0x09, 0x13, 0x2e, 0x13,
+];
 
 /// Internal record describing a platform's profile-defined measurement layout.
 pub(crate) struct PlatformInfo {
@@ -63,6 +84,8 @@ pub(crate) struct PlatformInfo {
     pub mkey: &'static str,
     pub digest_alg: i64,
     pub digest_len: usize,
+    /// Precomputed `UUIDv5(TAG_ID_NAMESPACE, "{vendor}/{model}")` bytes.
+    pub tag_id: [u8; 16],
 }
 
 /// Named Information Hash Algorithm ID for SHA-256 (RFC 6920).
@@ -79,6 +102,7 @@ pub(crate) fn known_platforms() -> &'static [PlatformInfo] {
             mkey: "MRTD",
             digest_alg: NI_SHA384,
             digest_len: 48,
+            tag_id: TDX_TAG_ID,
         },
         PlatformInfo {
             vendor: "AMD",
@@ -86,6 +110,7 @@ pub(crate) fn known_platforms() -> &'static [PlatformInfo] {
             mkey: "MEASUREMENT",
             digest_alg: NI_SHA384,
             digest_len: 48,
+            tag_id: SEV_SNP_TAG_ID,
         },
         PlatformInfo {
             vendor: "Microsoft",
@@ -93,6 +118,7 @@ pub(crate) fn known_platforms() -> &'static [PlatformInfo] {
             mkey: "MEASUREMENT",
             digest_alg: NI_SHA256,
             digest_len: 32,
+            tag_id: VBS_TAG_ID,
         },
     ]
 }
