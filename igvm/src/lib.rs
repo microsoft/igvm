@@ -1670,8 +1670,21 @@ impl IgvmDirectiveHeader {
                     variable_headers,
                 );
             }
-            IgvmDirectiveHeader::ErrorRange { .. } => {
-                todo!("append ErrorRange")
+            IgvmDirectiveHeader::ErrorRange {
+                gpa,
+                compatibility_mask,
+                size_bytes,
+            } => {
+                let info = IGVM_VHS_ERROR_RANGE {
+                    gpa: *gpa,
+                    compatibility_mask: *compatibility_mask,
+                    size_bytes: *size_bytes,
+                };
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_ERROR_RANGE,
+                    variable_headers,
+                );
             }
             IgvmDirectiveHeader::SnpIdBlock {
                 compatibility_mask,
