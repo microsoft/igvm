@@ -23,7 +23,6 @@ use uuid::Uuid;
 use super::platform_info;
 use super::profile::PROFILE_URI;
 use super::Error;
-use super::TAG_ID_NAMESPACE;
 
 // `ResolvedMeasurement` is intentionally profile-specific. When a second
 // profile arrives, common shape -- e.g., `(mkey, digest_alg, digest)` --
@@ -61,11 +60,7 @@ pub(crate) fn build_corim_bytes(
         group: None,
     };
 
-    let tag_id = Uuid::new_v5(
-        &TAG_ID_NAMESPACE,
-        format!("{}/{}", info.vendor, info.model).as_bytes(),
-    )
-    .to_string();
+    let tag_id = Uuid::from_bytes(info.tag_id).to_string();
 
     let ref_meas = build_measurement_map(measurement);
 
