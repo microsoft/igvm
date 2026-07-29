@@ -290,6 +290,17 @@ pub enum IgvmVariableHeaderType {
     /// A CCA policy structure described by [`IGVM_VHS_CCA_POLICY`].
     IGVM_VHT_CCA_POLICY = 0x106,
 
+    /// A human-readable version string for the IGVM file.
+    ///
+    /// The body of this header is the UTF-8 encoded string itself; there is
+    /// no separate VHS descriptor struct. The string length is given by the
+    /// `length` field of the enclosing [`IGVM_VHS_VARIABLE_HEADER`].
+    ///
+    /// The string's meaning is defined by the IGVM file owner (e.g. a SemVer
+    /// release tag, a build identifier, or any other human-readable label).
+    /// There may be at most one such header in the file.
+    IGVM_VHT_VERSION_STRING = 0x107,
+
     // These are IGVM_VHT_RANGE_DIRECTIVE structures.
     /// A parameter area structure described by [`IGVM_VHS_PARAMETER_AREA`].
     IGVM_VHT_PARAMETER_AREA = 0x301,
