@@ -20,7 +20,7 @@ jobs:
         features: ["", "--no-default-features"]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3.7.0
     - uses: dtolnay/rust-toolchain@master
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -44,7 +44,7 @@ jobs:
   c_api:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3.7.0
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
@@ -64,7 +64,7 @@ jobs:
         features: ["", "--no-default-features"]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3.7.0
       - uses: taiki-e/install-action@nextest
       - name: Install Miri
         run: |
