@@ -377,6 +377,15 @@ pub enum IgvmInitializationHeader {
         vp_index: u16,
         vtl: Vtl,
     },
+    /// Represents an [`IGVM_VHS_IGVM_VERSION`], describing the version of the
+    /// contents of this IGVM file as a `major.minor.patch.revision` tuple.
+    /// This describes the file as a whole, so at most one may be present.
+    IgvmVersion {
+        major: u16,
+        minor: u16,
+        patch: u16,
+        revision: u16,
+    },
     #[cfg(feature = "corim")]
     #[cfg_attr(docsrs, doc(cfg(feature = "corim")))]
     CorimDocument {
@@ -406,6 +415,7 @@ impl IgvmInitializationHeader {
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 size_of::<IGVM_VHS_PAGE_TABLE_RELOCATION>()
             }
+            IgvmInitializationHeader::IgvmVersion { .. } => size_of::<IGVM_VHS_IGVM_VERSION>(),
             #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimDocument { .. } => size_of::<IGVM_VHS_CORIM_DATA>(),
             #[cfg(feature = "corim")]
@@ -431,6 +441,9 @@ impl IgvmInitializationHeader {
             }
             IgvmInitializationHeader::PageTableRelocationRegion { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION
+            }
+            IgvmInitializationHeader::IgvmVersion { .. } => {
+                IgvmVariableHeaderType::IGVM_VHT_IGVM_VERSION
             }
             #[cfg(feature = "corim")]
             IgvmInitializationHeader::CorimDocument { .. } => {
@@ -544,6 +557,7 @@ impl IgvmInitializationHeader {
 
                 Ok(())
             }
+            IgvmInitializationHeader::IgvmVersion { .. } => Ok(()),
             // TODO: validate CoRIM document has the minimum fields required
             // described by the corresponding specification for that platform.
             #[cfg(feature = "corim")]
@@ -697,6 +711,23 @@ impl IgvmInitializationHeader {
                     vtl: vtl.try_into().map_err(|_| BinaryHeaderError::InvalidVtl)?,
                 }
             }
+            IgvmVariableHeaderType::IGVM_VHT_IGVM_VERSION
+                if length == size_of::<IGVM_VHS_IGVM_VERSION>() =>
+            {
+                let IGVM_VHS_IGVM_VERSION {
+                    major,
+                    minor,
+                    patch,
+                    revision,
+                } = read_header(&mut variable_headers)?;
+
+                IgvmInitializationHeader::IgvmVersion {
+                    major,
+                    minor,
+                    patch,
+                    revision,
+                }
+            }
             #[cfg(feature = "corim")]
             IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT
                 if length == size_of::<IGVM_VHS_CORIM_DATA>() =>
@@ -762,6 +793,7 @@ impl IgvmInitializationHeader {
             PageTableRelocationRegion {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
+            IgvmVersion { .. } => None,
             #[cfg(feature = "corim")]
             CorimDocument {
                 compatibility_mask, ..
@@ -890,6 +922,25 @@ impl IgvmInitializationHeader {
                 append_header(
                     &info,
                     IgvmVariableHeaderType::IGVM_VHT_PAGE_TABLE_RELOCATION_REGION,
+                    variable_headers,
+                );
+            }
+            IgvmInitializationHeader::IgvmVersion {
+                major,
+                minor,
+                patch,
+                revision,
+            } => {
+                let info = IGVM_VHS_IGVM_VERSION {
+                    major: *major,
+                    minor: *minor,
+                    patch: *patch,
+                    revision: *revision,
+                };
+
+                append_header(
+                    &info,
+                    IgvmVariableHeaderType::IGVM_VHT_IGVM_VERSION,
                     variable_headers,
                 );
             }
@@ -1226,6 +1277,8 @@ pub enum BinaryHeaderError {
     UnsupportedX64Register(#[from] registers::UnsupportedRegister<HvX64RegisterName>),
     #[error("unsupported AArch64 register")]
     UnsupportedAArch64Register(#[from] registers::UnsupportedRegister<HvArm64RegisterName>),
+    #[error("multiple igvm version headers in a single file")]
+    MultipleIgvmVersions,
     #[cfg(feature = "corim")]
     #[error("multiple corim documents for a given compatibility mask {0:x}")]
     MultipleCorimDocuments(u32),
@@ -2489,6 +2542,8 @@ pub enum Error {
     InvalidFixedHeaderArch(u32),
     #[error("merged igvm files are not the same revision")]
     MergeRevision,
+    #[error("merged igvm files declare mismatched versions")]
+    MergeIgvmVersionMismatch,
     #[cfg(feature = "corim")]
     #[error("CoRIM generation failed: {0}")]
     CorimGeneration(String),
@@ -2869,6 +2924,10 @@ impl IgvmFile {
                 Ok(())
             };
 
+        // A version header describes the file as a whole, so at most one is
+        // allowed.
+        let mut igvm_version_seen = false;
+
         // Track which compatibility masks have had a corim document header,
         // only one allowed per compatibility mask.
         #[cfg(feature = "corim")]
@@ -2977,6 +3036,16 @@ impl IgvmFile {
                 }
                 // TODO: validate SNP policy compatibility mask specifies SNP
                 IgvmInitializationHeader::GuestPolicy { .. } => {}
+                IgvmInitializationHeader::IgvmVersion { .. } => {
+                    // A version header describes the file as a whole, so at
+                    // most one is allowed.
+                    if igvm_version_seen {
+                        return Err(Error::InvalidBinaryInitializationHeader(
+                            BinaryHeaderError::MultipleIgvmVersions,
+                        ));
+                    }
+                    igvm_version_seen = true;
+                }
                 #[cfg(feature = "corim")]
                 IgvmInitializationHeader::CorimDocument {
                     compatibility_mask, ..
@@ -3875,6 +3944,9 @@ impl IgvmFile {
                 IgvmInitializationHeader::PageTableRelocationRegion {
                     compatibility_mask, ..
                 } => fixup_mask(compatibility_mask),
+                // A version header describes the file as a whole and has no
+                // compatibility mask to fix up.
+                IgvmInitializationHeader::IgvmVersion { .. } => {}
                 #[cfg(feature = "corim")]
                 IgvmInitializationHeader::CorimDocument {
                     compatibility_mask, ..
@@ -3949,6 +4021,32 @@ impl IgvmFile {
                         &fixup_parameter_index_map,
                     );
                 }
+            }
+        }
+
+        // A version header describes the file as a whole, so the merged result
+        // may contain at most one. If both files declare a version, they must
+        // match exactly; only a single copy is retained.
+        let self_version = self
+            .initialization_headers
+            .iter()
+            .find(|h| matches!(h, IgvmInitializationHeader::IgvmVersion { .. }))
+            .cloned();
+        if let Some(self_version) = self_version {
+            let mut mismatch = false;
+            other.initialization_headers.retain(|h| {
+                if matches!(h, IgvmInitializationHeader::IgvmVersion { .. }) {
+                    if *h != self_version {
+                        mismatch = true;
+                    }
+                    // Drop `other`'s version header; `self` keeps its own.
+                    false
+                } else {
+                    true
+                }
+            });
+            if mismatch {
+                return Err(Error::MergeIgvmVersionMismatch);
             }
         }
 
@@ -4301,6 +4399,99 @@ mod tests {
 
             a.merge(b).unwrap();
             assert_igvm_equal(&a, &merged);
+        }
+
+        #[test]
+        fn test_merge_version_equal() {
+            let version = || IgvmInitializationHeader::IgvmVersion {
+                major: 1,
+                minor: 2,
+                patch: 3,
+                revision: 4,
+            };
+            let mut a = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+                initialization_headers: vec![version()],
+                directive_headers: vec![],
+            };
+            let b = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::SEV_SNP)],
+                initialization_headers: vec![version()],
+                directive_headers: vec![],
+            };
+
+            a.merge(b).unwrap();
+
+            // Only a single version header remains after merging.
+            assert_eq!(
+                a.initialization_headers
+                    .iter()
+                    .filter(|h| matches!(h, IgvmInitializationHeader::IgvmVersion { .. }))
+                    .count(),
+                1
+            );
+        }
+
+        #[test]
+        fn test_merge_version_mismatch() {
+            let mut a = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+                initialization_headers: vec![IgvmInitializationHeader::IgvmVersion {
+                    major: 1,
+                    minor: 2,
+                    patch: 3,
+                    revision: 4,
+                }],
+                directive_headers: vec![],
+            };
+            let b = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::SEV_SNP)],
+                initialization_headers: vec![IgvmInitializationHeader::IgvmVersion {
+                    major: 2,
+                    minor: 0,
+                    patch: 0,
+                    revision: 0,
+                }],
+                directive_headers: vec![],
+            };
+
+            assert!(matches!(a.merge(b), Err(Error::MergeIgvmVersionMismatch)));
+        }
+
+        #[test]
+        fn test_merge_version_one_side() {
+            let mut a = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+                initialization_headers: vec![],
+                directive_headers: vec![],
+            };
+            let b = IgvmFile {
+                revision: IgvmRevision::V1,
+                platform_headers: vec![new_platform(0x1, IgvmPlatformType::SEV_SNP)],
+                initialization_headers: vec![IgvmInitializationHeader::IgvmVersion {
+                    major: 5,
+                    minor: 6,
+                    patch: 7,
+                    revision: 8,
+                }],
+                directive_headers: vec![],
+            };
+
+            a.merge(b).unwrap();
+
+            assert!(a
+                .initialization_headers
+                .contains(&IgvmInitializationHeader::IgvmVersion {
+                    major: 5,
+                    minor: 6,
+                    patch: 7,
+                    revision: 8,
+                }));
         }
 
         #[test]
@@ -4712,7 +4903,6 @@ mod tests {
 
     /// Test an initialization variable header matches the supplied args. Also
     /// tests round-trip serialization/deserialization.
-    #[cfg(feature = "corim")]
     fn test_init_variable_header<T: IntoBytes + Immutable + KnownLayout>(
         header: IgvmInitializationHeader,
         file_data_offset: u32,
@@ -5044,6 +5234,121 @@ mod tests {
             ..raw_header
         };
         assert_reserved_not_zero(raw_header);
+    }
+
+    #[test]
+    fn test_igvm_version() {
+        let raw_header = IGVM_VHS_IGVM_VERSION {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            revision: 4,
+        };
+
+        let header = IgvmInitializationHeader::IgvmVersion {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            revision: 4,
+        };
+
+        test_init_variable_header(
+            header,
+            0,
+            IgvmVariableHeaderType::IGVM_VHT_IGVM_VERSION,
+            raw_header,
+            None,
+        );
+    }
+
+    #[test]
+    fn test_igvm_version_roundtrip() {
+        let data = vec![1; PAGE_SIZE_4K as usize];
+
+        let file = IgvmFile {
+            revision: IgvmRevision::V2 {
+                arch: Arch::X64,
+                page_size: PAGE_SIZE_4K as u32,
+            },
+            platform_headers: vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+            initialization_headers: vec![IgvmInitializationHeader::IgvmVersion {
+                major: 4,
+                minor: 0,
+                patch: 7,
+                revision: 9,
+            }],
+            directive_headers: vec![new_page_data(0, 1, &data)],
+        };
+
+        let mut binary_file = Vec::new();
+        file.serialize(&mut binary_file).unwrap();
+
+        let deserialized = IgvmFile::new_from_binary(&binary_file, None).unwrap();
+        assert_igvm_equal(&file, &deserialized);
+    }
+
+    #[test]
+    fn test_igvm_version_no_compatibility_mask() {
+        // A version header describes the whole file and has no associated
+        // compatibility mask.
+        let header = IgvmInitializationHeader::IgvmVersion {
+            major: 1,
+            minor: 0,
+            patch: 0,
+            revision: 0,
+        };
+        assert_eq!(header.compatibility_mask(), None);
+    }
+
+    #[test]
+    fn test_igvm_version_single_valid() {
+        let file = IgvmFile::new(
+            IgvmRevision::V2 {
+                arch: Arch::X64,
+                page_size: PAGE_SIZE_4K as u32,
+            },
+            vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+            vec![IgvmInitializationHeader::IgvmVersion {
+                major: 1,
+                minor: 0,
+                patch: 0,
+                revision: 0,
+            }],
+            vec![],
+        );
+        assert!(file.is_ok());
+    }
+
+    #[test]
+    fn test_igvm_version_multiple_error() {
+        let file = IgvmFile::new(
+            IgvmRevision::V2 {
+                arch: Arch::X64,
+                page_size: PAGE_SIZE_4K as u32,
+            },
+            vec![new_platform(0x1, IgvmPlatformType::VSM_ISOLATION)],
+            vec![
+                IgvmInitializationHeader::IgvmVersion {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    revision: 0,
+                },
+                IgvmInitializationHeader::IgvmVersion {
+                    major: 2,
+                    minor: 0,
+                    patch: 0,
+                    revision: 0,
+                },
+            ],
+            vec![],
+        );
+        assert!(matches!(
+            file,
+            Err(Error::InvalidBinaryInitializationHeader(
+                BinaryHeaderError::MultipleIgvmVersions
+            ))
+        ));
     }
 
     #[test]

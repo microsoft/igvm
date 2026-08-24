@@ -289,6 +289,9 @@ pub enum IgvmVariableHeaderType {
     IGVM_VHT_CORIM_SIGNATURE = 0x105,
     /// A CCA policy structure described by [`IGVM_VHS_CCA_POLICY`].
     IGVM_VHT_CCA_POLICY = 0x106,
+    /// The version of the contents of the IGVM file, described by
+    /// [`IGVM_VHS_IGVM_VERSION`].
+    IGVM_VHT_IGVM_VERSION = 0x107,
 
     /// A human-readable version string for the IGVM file.
     ///
@@ -1415,3 +1418,26 @@ pub struct IGVM_VHS_CORIM_DATA {
     /// Reserved.
     pub reserved: u32,
 }
+
+/// The version of the contents described by an IGVM file, described by
+/// [`IgvmVariableHeaderType::IGVM_VHT_IGVM_VERSION`].
+///
+/// This describes the file as a whole, so at most one may be present in an
+/// IGVM file. The version is expressed as a `major.minor.patch.revision`
+/// tuple, following semantic versioning conventions.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, IntoBytes, Immutable, KnownLayout, FromBytes, PartialEq, Eq)]
+pub struct IGVM_VHS_IGVM_VERSION {
+    /// The major version.
+    pub major: u16,
+    /// The minor version.
+    pub minor: u16,
+    /// The patch version.
+    pub patch: u16,
+    /// The revision.
+    pub revision: u16,
+}
+
+// The variable header section must remain 8-byte aligned, so this structure's
+// size must be a multiple of 8.
+const_assert_eq!(size_of::<IGVM_VHS_IGVM_VERSION>(), 8);
