@@ -444,6 +444,14 @@ impl PageTableRelocationBuilder {
             return Err(Error::Cr3);
         }
 
+        // This region is itself relocated by `table_reloc_offset` and must stay
+        // identity mapped, so entries mapping it need fixing up like any other
+        // relocated range. Callers describe other ranges only.
+        let mut relocation_offsets = relocation_offsets;
+        if table_reloc_offset != 0 {
+            relocation_offsets.insert(self.gpa..=self.gpa + self.size - 1, table_reloc_offset);
+        }
+
         let mut page_tables = <[Unalign<PageTable>]>::ref_from_bytes(self.page_data.as_slice())
             .expect("page data is a valid list of page tables")
             .iter()
@@ -754,6 +762,94 @@ mod tests {
             {
                 assert_eq!(left, right, "table {} pte {}", table_index, pte_index);
             }
+        }
+    }
+
+    #[test]
+    fn builder_relocates_own_region() {
+        // The page table region is itself relocated and must stay identity
+        // mapped. A leaf entry mapping only the page table region, with no
+        // other relocated range overlapping it, must still be moved.
+        let cr3 = 1024 * X64_1GB_PAGE_SIZE;
+        let cr3_offset = X64_1GB_PAGE_SIZE;
+
+        let original_entries = vec![PteInfo {
+            va: cr3,
+            value: PageTableEntryType::Leaf2MbPage(cr3),
+        }];
+
+        let original_tables = build_page_table(cr3, 4, original_entries);
+
+        let mut builder = PageTableRelocationBuilder::new(
+            cr3,
+            (original_tables.len() * 4) as u64,
+            original_tables.len() as u64,
+            0,
+            Vtl::Vtl0,
+        );
+
+        original_tables
+            .as_slice()
+            .chunks_exact(X64_PAGE_SIZE as usize)
+            .enumerate()
+            .for_each(|(index, chunk)| {
+                builder
+                    .set_page_data(cr3 + index as u64 * X64_PAGE_SIZE, chunk)
+                    .unwrap()
+            });
+
+        // The caller describes no other relocated ranges.
+        let built_tables = builder
+            .build(
+                cr3_offset as i64,
+                RangeMap::new(),
+                CpuPagingState { cr3, cr4: 0 },
+            )
+            .unwrap();
+
+        let mut tables: Vec<PageTable> =
+            <[Unalign<PageTable>]>::ref_from_bytes(built_tables.as_slice())
+                .expect("page data is a valid list of page tables")
+                .iter()
+                .map(|v| v.into_inner())
+                .collect();
+
+        let new_base = cr3 + cr3_offset;
+
+        // The relocated page table must identity map its own new location,
+        // otherwise the relocated root is unmapped.
+        assert_eq!(
+            lookup_leaf(&mut tables, new_base, new_base, new_base),
+            Some(new_base)
+        );
+
+        // The stale identity mapping must be gone.
+        assert_eq!(lookup_leaf(&mut tables, new_base, new_base, cr3), None);
+    }
+
+    /// Walk the page tables rooted at `root_gpa`, held in a region based at
+    /// `base`, and return the address mapped by the leaf entry for `va`.
+    fn lookup_leaf(tables: &mut [PageTable], base: u64, root_gpa: u64, va: u64) -> Option<u64> {
+        let mut table_gpa = root_gpa;
+        let mut level = 3;
+        loop {
+            let index = ((table_gpa - base) / X64_PAGE_SIZE) as usize;
+            let entry = tables.get_mut(index)?.entry(va, level);
+            if !entry.is_present() {
+                return None;
+            }
+            let leaf = match level {
+                3 => false,
+                2 | 1 => entry.is_large_page(),
+                0 => true,
+                _ => unreachable!(),
+            };
+            let gpa = entry.gpa()?;
+            if leaf {
+                return Some(gpa);
+            }
+            table_gpa = gpa;
+            level -= 1;
         }
     }
 
