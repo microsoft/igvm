@@ -948,6 +948,41 @@ mod tests {
     }
 
     #[test]
+    fn version_string_preserved_without_changing_measurements() {
+        for make_file in [make_vbs_file, make_snp_file, make_tdx_file] {
+            let mut file = make_file();
+            let baseline = IgvmSerializer::new(&file).unwrap().measurements()[0].clone();
+            file.initializations_mut()
+                .push(IgvmInitializationHeader::VersionString("build".to_owned()));
+            let mut serializer = IgvmSerializer::new(&file).unwrap();
+            assert_eq!(serializer.measurements()[0].digest, baseline.digest);
+            let mut output = Vec::new();
+            serializer.serialize(&mut output).unwrap();
+            assert_eq!(
+                IgvmFile::new_from_binary(&output, None)
+                    .unwrap()
+                    .version_string(),
+                Some("build")
+            );
+            serializer
+                .add_corim(
+                    baseline.platform,
+                    launch_measurement_template(baseline.platform, 1),
+                )
+                .unwrap();
+            output.clear();
+            serializer.serialize(&mut output).unwrap();
+            let parsed = IgvmFile::new_from_binary(&output, None).unwrap();
+            assert_eq!(parsed.version_string(), Some("build"));
+            assert_eq!(parsed.directives(), file.directives());
+            assert!(parsed
+                .initializations()
+                .iter()
+                .any(|header| matches!(header, IgvmInitializationHeader::CorimDocument { .. })));
+        }
+    }
+
+    #[test]
     fn add_corim_produces_larger_output() {
         let file = make_snp_file();
 
