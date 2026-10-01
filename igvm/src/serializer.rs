@@ -74,7 +74,8 @@ pub struct IgvmPlatformMeasurement {
 ///
 /// The underlying [`IgvmFile`] is never mutated. Additional initialization
 /// headers (CoRIM documents) are accumulated in the serializer and merged
-/// into the output during [`serialize`](IgvmSerializer::serialize).
+/// into the output during [`serialize`](IgvmSerializer::serialize). An existing
+/// SNP ID block can also be replaced without changing its identity or position.
 #[derive(Debug)]
 pub struct IgvmSerializer<'a> {
     file: &'a IgvmFile,
@@ -82,6 +83,7 @@ pub struct IgvmSerializer<'a> {
     extra_init_headers: Vec<IgvmInitializationHeader>,
     extra_directive_headers: Vec<IgvmDirectiveHeader>,
     suppressed_corim_masks: Vec<u32>,
+    snp_id_block_replacement: Option<(usize, IgvmDirectiveHeader, u64)>,
 }
 
 impl<'a> IgvmSerializer<'a> {
@@ -106,6 +108,7 @@ impl<'a> IgvmSerializer<'a> {
             extra_init_headers: Vec::new(),
             extra_directive_headers: Vec::new(),
             suppressed_corim_masks: Vec::new(),
+            snp_id_block_replacement: None,
         };
 
         // Eagerly compute the launch measurement for every supported
@@ -470,13 +473,161 @@ impl<'a> IgvmSerializer<'a> {
             .expect("just pushed a directive")
     }
 
+    /// Replace the authentication material of an existing SNP ID block.
+    ///
+    /// `signed_policy` is the guest policy from the firmware ID-block payload
+    /// that the caller verified. It is not stored in the ID-block directive.
+    /// Exactly one ID block must overlap the SNP platform mask, and its mask
+    /// must equal that platform mask. Its launch digest must match the measured
+    /// image. Family ID, image ID, version, SVN, and all other fields except the
+    /// ID-key algorithm, signature, and public key must remain unchanged.
+    ///
+    /// The original block may be signed or an unsigned intermediate. Author-key
+    /// signing is not supported by this operation. This method does not verify
+    /// signature mathematics or signer authorization: the caller must verify the
+    /// new signature over the exact firmware payload and enforce its trust policy
+    /// before calling it. No private key or signing service is needed by this crate.
+    ///
+    /// Replacement preserves the directive's position and leaves the source file
+    /// untouched. Repeated calls replace the staged value. A failed call leaves
+    /// the previous value intact. Serialization rechecks the final measurement
+    /// and ID-block uniqueness, including directives added via `add_directive`.
+    pub fn replace_snp_id_block(
+        &mut self,
+        directive: IgvmDirectiveHeader,
+        signed_policy: u64,
+    ) -> Result<&IgvmDirectiveHeader, Error> {
+        let index = self.validate_snp_id_block_replacement(&directive, signed_policy)?;
+        self.snp_id_block_replacement = Some((index, directive, signed_policy));
+        Ok(&self
+            .snp_id_block_replacement
+            .as_ref()
+            .expect("just staged a replacement")
+            .1)
+    }
+
+    fn validate_snp_id_block_replacement(
+        &self,
+        directive: &IgvmDirectiveHeader,
+        signed_policy: u64,
+    ) -> Result<usize, Error> {
+        let fail = Error::SnpIdBlockReplacement;
+        let measurement = self
+            .measurement_for(IgvmPlatformType::SEV_SNP)
+            .ok_or_else(|| fail("no SNP platform"))?;
+        let mask = measurement.compatibility_mask;
+        if self.file.platforms().iter().any(|header| {
+            matches!(header, IgvmPlatformHeader::SupportedPlatform(info)
+                if info.platform_type != IgvmPlatformType::SEV_SNP
+                    && info.compatibility_mask & mask != 0)
+        }) {
+            return Err(fail("SNP compatibility mask overlaps another platform"));
+        }
+
+        let mut policies = self
+            .file
+            .initializations()
+            .iter()
+            .filter_map(|header| match header {
+                IgvmInitializationHeader::GuestPolicy {
+                    compatibility_mask,
+                    policy,
+                } if compatibility_mask & mask != 0 => Some((*compatibility_mask, *policy)),
+                _ => None,
+            });
+        let (policy_mask, policy) = policies
+            .next()
+            .ok_or_else(|| fail("no matching guest policy"))?;
+        if policies.next().is_some() || policy_mask & mask != mask {
+            return Err(fail("ambiguous guest policy"));
+        }
+        if signed_policy != policy {
+            return Err(fail("signed policy differs from the image guest policy"));
+        }
+
+        let mut blocks = self
+            .file
+            .directives()
+            .iter()
+            .enumerate()
+            .filter(|(_, header)| {
+                matches!(header, IgvmDirectiveHeader::SnpIdBlock { compatibility_mask, .. }
+                    if compatibility_mask & mask != 0)
+            });
+        let (index, original) = blocks
+            .next()
+            .ok_or_else(|| fail("no existing SNP ID block"))?;
+        if blocks.next().is_some()
+            || self.extra_directive_headers.iter().any(|header| {
+                matches!(header, IgvmDirectiveHeader::SnpIdBlock { compatibility_mask, .. }
+                    if compatibility_mask & mask != 0)
+            })
+        {
+            return Err(fail("multiple overlapping SNP ID blocks"));
+        }
+        let IgvmDirectiveHeader::SnpIdBlock {
+            compatibility_mask,
+            author_key_enabled,
+            ld,
+            ..
+        } = original
+        else {
+            unreachable!("filtered to SNP ID blocks");
+        };
+        if *compatibility_mask != mask {
+            return Err(fail(
+                "existing ID block mask must equal the SNP platform mask",
+            ));
+        }
+        if *author_key_enabled != 0 {
+            return Err(fail("author-key signing is not supported"));
+        }
+        if ld.as_slice() != measurement.digest {
+            return Err(fail(
+                "existing ID block launch digest does not match the image",
+            ));
+        }
+
+        let IgvmDirectiveHeader::SnpIdBlock {
+            id_key_algorithm,
+            id_key_signature,
+            id_public_key,
+            ..
+        } = directive
+        else {
+            return Err(fail("replacement must be an SNP ID block"));
+        };
+        let mut expected = original.clone();
+        if let IgvmDirectiveHeader::SnpIdBlock {
+            id_key_algorithm: algorithm,
+            id_key_signature: signature,
+            id_public_key: public_key,
+            ..
+        } = &mut expected
+        {
+            *algorithm = *id_key_algorithm;
+            *signature = id_key_signature.clone();
+            *public_key = id_public_key.clone();
+        }
+        if &expected != directive {
+            return Err(fail(
+                "replacement changes fields outside ID-key authentication",
+            ));
+        }
+        Ok(index)
+    }
+
     /// Serialize the IGVM file to binary format, including any CoRIM
     /// documents that were added via [`add_corim`](Self::add_corim).
     ///
     /// This produces the same binary format as [`IgvmFile::serialize`],
-    /// but with additional initialization headers and directives appended.
+    /// but with additional initialization headers and directives appended,
+    /// and any staged SNP ID block replacement applied in place.
     pub fn serialize(&self, output: &mut Vec<u8>) -> Result<(), Error> {
-        if self.extra_init_headers.is_empty() && self.extra_directive_headers.is_empty() {
+        if self.extra_init_headers.is_empty()
+            && self.extra_directive_headers.is_empty()
+            && self.snp_id_block_replacement.is_none()
+        {
             // Fast path: nothing added, delegate directly.
             self.file.serialize(output)
         } else {
@@ -499,6 +650,13 @@ impl<'a> IgvmSerializer<'a> {
                 .extend(self.extra_init_headers.iter().cloned());
             file.directives_mut()
                 .extend(self.extra_directive_headers.iter().cloned());
+            if let Some((index, directive, policy)) = &self.snp_id_block_replacement {
+                file.directives_mut()[*index] = directive.clone();
+                // Appended directives may affect measurement or introduce another
+                // ID block after replacement was staged.
+                IgvmSerializer::new(&file)?
+                    .validate_snp_id_block_replacement(directive, *policy)?;
+            }
             file.serialize(output)
         }
     }
@@ -920,6 +1078,338 @@ mod tests {
 
         // The original file should not have been mutated.
         assert_eq!(file.directives().len(), directive_count_before);
+    }
+
+    fn make_snp_file_with_id_block() -> IgvmFile {
+        let mut file = make_snp_file();
+        let digest = IgvmSerializer::new(&file)
+            .unwrap()
+            .measurement_for(IgvmPlatformType::SEV_SNP)
+            .unwrap()
+            .digest
+            .clone();
+        let mut block = new_snp_id_block(1, digest.try_into().unwrap());
+        if let IgvmDirectiveHeader::SnpIdBlock {
+            family_id,
+            image_id,
+            guest_svn,
+            ..
+        } = &mut block
+        {
+            *family_id = [0x12; 16];
+            *image_id = [0x34; 16];
+            *guest_svn = 0x1234;
+        }
+        file.directives_mut().insert(1, block);
+        file
+    }
+
+    fn replacement_id_block(file: &IgvmFile) -> IgvmDirectiveHeader {
+        let mut block = file.directives()[1].clone();
+        if let IgvmDirectiveHeader::SnpIdBlock {
+            id_key_algorithm,
+            id_key_signature,
+            id_public_key,
+            ..
+        } = &mut block
+        {
+            *id_key_algorithm = 1;
+            id_key_signature.r_comp[0] = 1;
+            id_key_signature.s_comp[0] = 2;
+            id_public_key.curve = 2;
+            id_public_key.qx[0] = 3;
+            id_public_key.qy[0] = 4;
+        }
+        block
+    }
+
+    fn serialize_and_parse(serializer: &IgvmSerializer<'_>) -> IgvmFile {
+        let mut bytes = Vec::new();
+        serializer.serialize(&mut bytes).unwrap();
+        IgvmFile::new_from_binary(&bytes, None).unwrap()
+    }
+
+    #[test]
+    fn replace_snp_id_block_preserves_image_identity_order_and_measurement() {
+        for signed_input in [false, true] {
+            let mut file = make_snp_file_with_id_block();
+            if signed_input {
+                file.directives_mut()[1] = replacement_id_block(&file);
+            }
+            let original = file.clone();
+            let mut replacement = replacement_id_block(&file);
+            if let IgvmDirectiveHeader::SnpIdBlock {
+                id_key_signature, ..
+            } = &mut replacement
+            {
+                id_key_signature.r_comp[0] = 5;
+            }
+            let mut serializer = IgvmSerializer::new(&file).unwrap();
+            let before = serializer.measurements()[0].digest.clone();
+            serializer
+                .replace_snp_id_block(replacement.clone(), 0x30000)
+                .unwrap();
+            let output = serialize_and_parse(&serializer);
+            let mut expected = original.directives().to_vec();
+            expected[1] = replacement;
+            assert_eq!(output.directives(), expected);
+            assert_eq!(output.platforms(), original.platforms());
+            assert_eq!(output.initializations(), original.initializations());
+            assert_eq!(file.directives(), original.directives());
+            assert_eq!(
+                IgvmSerializer::new(&output).unwrap().measurements()[0].digest,
+                before
+            );
+        }
+    }
+
+    #[test]
+    fn replace_snp_id_block_composes_with_corim_and_repeated_replacement() {
+        let file = make_snp_file_with_id_block();
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+        let document = serializer
+            .add_corim(
+                IgvmPlatformType::SEV_SNP,
+                launch_measurement_template(IgvmPlatformType::SEV_SNP, 0x1234),
+            )
+            .unwrap()
+            .to_vec();
+        serializer
+            .set_corim_signature(IgvmPlatformType::SEV_SNP, vec![1, 2, 3])
+            .unwrap();
+        let replacement = replacement_id_block(&file);
+        for _ in 0..2 {
+            serializer
+                .replace_snp_id_block(replacement.clone(), 0x30000)
+                .unwrap();
+        }
+        assert!(serializer
+            .replace_snp_id_block(replacement.clone(), 0x40000)
+            .is_err());
+        let output = serialize_and_parse(&serializer);
+        assert_eq!(output.directives()[1], replacement);
+        assert_eq!(output.directives().len(), file.directives().len());
+        assert_eq!(
+            IgvmSerializer::new(&output)
+                .unwrap()
+                .corim_for(IgvmPlatformType::SEV_SNP),
+            Some(document.as_slice())
+        );
+        assert!(output.initializations().iter().any(|header| matches!(
+            header,
+            IgvmInitializationHeader::CorimSignature { signature, .. }
+                if signature == &[1, 2, 3]
+        )));
+    }
+
+    #[test]
+    fn replace_snp_id_block_preserves_other_platform_and_appended_unmeasured_directive() {
+        let mut file = make_snp_file_with_id_block();
+        file.platform_headers
+            .push(new_platform(2, IgvmPlatformType::TDX));
+        file.directives_mut()
+            .push(new_page_data(2, 2, &[0xEE; PAGE_SIZE_4K as usize]));
+        let replacement = replacement_id_block(&file);
+        let mut serializer = IgvmSerializer::new(&file).unwrap();
+        let before = serializer
+            .measurements()
+            .iter()
+            .map(|m| m.digest.clone())
+            .collect::<Vec<_>>();
+        serializer
+            .replace_snp_id_block(replacement.clone(), 0x30000)
+            .unwrap();
+        let extra = IgvmDirectiveHeader::ErrorRange {
+            gpa: 0x10000,
+            compatibility_mask: 1,
+            size_bytes: 0x2000,
+        };
+        serializer.add_directive(extra.clone());
+        let output = serialize_and_parse(&serializer);
+        let mut expected = file.directives().to_vec();
+        expected[1] = replacement;
+        expected.push(extra);
+        assert_eq!(output.directives(), expected);
+        assert_eq!(output.platforms(), file.platforms());
+        assert_eq!(
+            IgvmSerializer::new(&output)
+                .unwrap()
+                .measurements()
+                .iter()
+                .map(|m| m.digest.clone())
+                .collect::<Vec<_>>(),
+            before
+        );
+    }
+
+    #[test]
+    fn replace_snp_id_block_rejects_identity_changes_without_mutation() {
+        let file = make_snp_file_with_id_block();
+        for field in [
+            "mask",
+            "ld",
+            "family",
+            "image",
+            "version",
+            "svn",
+            "author",
+            "reserved",
+            "author_algorithm",
+            "author_signature",
+            "author_public_key",
+        ] {
+            let mut replacement = replacement_id_block(&file);
+            if let IgvmDirectiveHeader::SnpIdBlock {
+                compatibility_mask,
+                ld,
+                family_id,
+                image_id,
+                version,
+                guest_svn,
+                author_key_enabled,
+                reserved,
+                author_key_algorithm,
+                author_key_signature,
+                author_public_key,
+                ..
+            } = &mut replacement
+            {
+                match field {
+                    "mask" => *compatibility_mask = 3,
+                    "ld" => ld[0] ^= 1,
+                    "family" => family_id[0] ^= 1,
+                    "image" => image_id[0] ^= 1,
+                    "version" => *version += 1,
+                    "svn" => *guest_svn += 1,
+                    "author" => *author_key_enabled = 1,
+                    "reserved" => reserved[0] = 1,
+                    "author_algorithm" => *author_key_algorithm = 1,
+                    "author_signature" => author_key_signature.r_comp[0] = 1,
+                    "author_public_key" => author_public_key.qx[0] = 1,
+                    _ => unreachable!(),
+                }
+            }
+            let mut serializer = IgvmSerializer::new(&file).unwrap();
+            assert!(
+                matches!(
+                    serializer.replace_snp_id_block(replacement, 0x30000),
+                    Err(Error::SnpIdBlockReplacement(_))
+                ),
+                "{field}"
+            );
+            let output = serialize_and_parse(&serializer);
+            assert_eq!(output.directives(), file.directives(), "{field}");
+        }
+    }
+
+    #[test]
+    fn replace_snp_id_block_rejects_invalid_contexts() {
+        for case in [
+            "missing_block",
+            "duplicate_block",
+            "overlapping_block",
+            "shared_block",
+            "stale_digest",
+            "author_key",
+            "duplicate_policy",
+            "overlapping_platform",
+        ] {
+            let mut file = make_snp_file_with_id_block();
+            let replacement = replacement_id_block(&file);
+            match case {
+                "missing_block" => {
+                    file.directives_mut().remove(1);
+                }
+                "duplicate_block" => file.directives_mut().push(replacement.clone()),
+                "overlapping_block" => file.directives_mut().push(new_snp_id_block(3, [0; 48])),
+                "shared_block" => {
+                    if let IgvmDirectiveHeader::SnpIdBlock {
+                        compatibility_mask, ..
+                    } = &mut file.directives_mut()[1]
+                    {
+                        *compatibility_mask = 3;
+                    }
+                }
+                "stale_digest" => {
+                    if let IgvmDirectiveHeader::SnpIdBlock { ld, .. } =
+                        &mut file.directives_mut()[1]
+                    {
+                        ld[0] ^= 1;
+                    }
+                }
+                "author_key" => {
+                    if let IgvmDirectiveHeader::SnpIdBlock {
+                        author_key_enabled, ..
+                    } = &mut file.directives_mut()[1]
+                    {
+                        *author_key_enabled = 1;
+                    }
+                }
+                "duplicate_policy" => {
+                    file.initializations_mut()
+                        .push(IgvmInitializationHeader::GuestPolicy {
+                            policy: 0x30000,
+                            compatibility_mask: 3,
+                        })
+                }
+                "overlapping_platform" => file
+                    .platform_headers
+                    .push(new_platform(1, IgvmPlatformType::NATIVE)),
+                _ => unreachable!(),
+            }
+            let mut serializer = IgvmSerializer::new(&file).unwrap();
+            assert!(
+                matches!(
+                    serializer.replace_snp_id_block(replacement, 0x30000),
+                    Err(Error::SnpIdBlockReplacement(_))
+                ),
+                "{case}"
+            );
+        }
+
+        let file = make_tdx_file();
+        assert!(IgvmSerializer::new(&file)
+            .unwrap()
+            .replace_snp_id_block(new_snp_id_block(1, [0; 48]), 0x30000)
+            .is_err());
+        let file = make_snp_file_with_id_block();
+        assert!(IgvmSerializer::new(&file)
+            .unwrap()
+            .replace_snp_id_block(new_page_data(2, 1, &[]), 0x30000)
+            .is_err());
+    }
+
+    #[test]
+    fn replace_snp_id_block_rechecks_appended_directives_before_writing() {
+        for add_before in [false, true] {
+            for duplicate in [false, true] {
+                let file = make_snp_file_with_id_block();
+                let mut serializer = IgvmSerializer::new(&file).unwrap();
+                let extra = if duplicate {
+                    file.directives()[1].clone()
+                } else {
+                    new_page_data(2, 1, &[0xAA; PAGE_SIZE_4K as usize])
+                };
+                if add_before {
+                    serializer.add_directive(extra.clone());
+                }
+                let result = serializer.replace_snp_id_block(replacement_id_block(&file), 0x30000);
+                if add_before && duplicate {
+                    assert!(result.is_err());
+                    continue;
+                }
+                result.unwrap();
+                if !add_before {
+                    serializer.add_directive(extra);
+                }
+                let mut output = vec![0xAA];
+                assert!(matches!(
+                    serializer.serialize(&mut output),
+                    Err(Error::SnpIdBlockReplacement(_))
+                ));
+                assert_eq!(output, [0xAA]);
+            }
+        }
     }
 
     #[test]

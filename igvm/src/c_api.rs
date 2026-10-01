@@ -65,6 +65,8 @@ pub enum IgvmResult {
     IGVMAPI_CORIM_GENERATION = -29,
     #[cfg(feature = "corim")]
     IGVMAPI_MEASUREMENT_FAILED = -30,
+    #[cfg(feature = "corim")]
+    IGVMAPI_SNP_ID_BLOCK_REPLACEMENT = -31,
 }
 
 type IgvmHandle = i32;
@@ -176,6 +178,8 @@ fn translate_error(error: Error) -> IgvmResult {
         Error::CorimGeneration(_) => IgvmResult::IGVMAPI_CORIM_GENERATION,
         #[cfg(feature = "corim")]
         Error::MeasurementFailed(_) => IgvmResult::IGVMAPI_MEASUREMENT_FAILED,
+        #[cfg(feature = "corim")]
+        Error::SnpIdBlockReplacement(_) => IgvmResult::IGVMAPI_SNP_ID_BLOCK_REPLACEMENT,
     }
 }
 
