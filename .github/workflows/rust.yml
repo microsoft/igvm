@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-    - uses: dtolnay/rust-toolchain@master
+    - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt, clippy
@@ -29,23 +29,23 @@ jobs:
     - name: Format
       run: cargo fmt --all -- --check
     - name: Check
-      run: cargo check --all-features --all-targets
+      run: cargo check --locked --all-features --all-targets
     - name: Clippy
-      run: cargo clippy --all-features --all-targets -- -D warnings
+      run: cargo clippy --locked --all-features --all-targets -- -D warnings
     - name: Clippy igvm_defs no features
-      run: cargo clippy -p igvm_defs -- -D warnings
+      run: cargo clippy --locked -p igvm_defs -- -D warnings
     - name: Build
-      run: cargo build --verbose ${{ matrix.features }}
+      run: cargo build --locked --verbose ${{ matrix.features }}
     - name: Run unit tests
-      run: cargo nextest run --verbose ${{ matrix.features }} --profile ci --workspace
+      run: cargo nextest run --locked --verbose ${{ matrix.features }} --profile ci --workspace
     - name: Run doc tests
-      run: cargo test --no-fail-fast --doc --workspace
+      run: cargo test --locked --no-fail-fast --doc --workspace
 
   c_api:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@7e38f4b43b4db5c8dd498af069a4f6196df1d067 # v1
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Install cbindgen
@@ -55,7 +55,7 @@ jobs:
       - name: Install build dependencies
         run: sudo apt-get install -y libcunit1-dev
       - name: Build and test
-        run: make -f igvm_c/Makefile
+        run: make -f igvm_c/Makefile EXTRA_PARAMS=--locked
 
   miri:
     name: "Miri"
@@ -72,4 +72,4 @@ jobs:
           rustup override set nightly
           cargo miri setup
       - name: Test with Miri
-        run: cargo miri nextest run ${{ matrix.features }} --profile ci --workspace
+        run: cargo miri nextest run --locked ${{ matrix.features }} --profile ci --workspace
