@@ -2495,6 +2495,9 @@ pub enum Error {
     #[cfg(feature = "corim")]
     #[error("measurement computation failed: {0}")]
     MeasurementFailed(String),
+    #[cfg(feature = "corim")]
+    #[error("SNP ID block replacement failed: {0}")]
+    SnpIdBlockReplacement(&'static str),
 }
 
 #[cfg(feature = "corim")]
