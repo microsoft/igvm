@@ -4293,6 +4293,13 @@ mod tests {
                 for value in ["", "v1.2.3", "12345678", "\u{e9}\u{1f680}", "v1\0build"] {
                     let mut file = file(IgvmPlatformType::VSM_ISOLATION, Some(value));
                     file.revision = revision;
+                    file.initialization_headers.insert(
+                        0,
+                        IgvmInitializationHeader::GuestPolicy {
+                            policy: 1,
+                            compatibility_mask: 1,
+                        },
+                    );
                     file.initialization_headers
                         .push(IgvmInitializationHeader::GuestPolicy {
                             policy: 0,
@@ -4346,6 +4353,38 @@ mod tests {
             }
             let file = file(IgvmPlatformType::VSM_ISOLATION, None);
             assert_eq!(file.version_string(), None);
+        }
+
+        #[test]
+        fn middle_initialization_header_accepts_both_forms() {
+            let before = IgvmInitializationHeader::GuestPolicy {
+                policy: 1,
+                compatibility_mask: 1,
+            };
+            let after = IgvmInitializationHeader::GuestPolicy {
+                policy: 0,
+                compatibility_mask: 1,
+            };
+            let mut expected = file(IgvmPlatformType::VSM_ISOLATION, Some("build"));
+            expected.initialization_headers.insert(0, before.clone());
+            expected.initialization_headers.push(after.clone());
+            let mut canonical = Vec::new();
+            expected.serialize(&mut canonical).unwrap();
+
+            for optional in [false, true] {
+                let mut headers = Vec::new();
+                let mut data = FileDataSerializer::new(0);
+                before.write_binary_header(&mut headers, &mut data).unwrap();
+                headers.extend(version_header(b"build", optional));
+                after.write_binary_header(&mut headers, &mut data).unwrap();
+                let binary = binary_with_headers(&headers);
+                let parsed = IgvmFile::new_from_binary(&binary, None).unwrap();
+                assert_eq!(parsed.initializations(), expected.initializations());
+                assert_eq!(parsed.directives(), expected.directives());
+                let mut output = Vec::new();
+                parsed.serialize(&mut output).unwrap();
+                assert_eq!(output, canonical);
+            }
         }
 
         #[test]
