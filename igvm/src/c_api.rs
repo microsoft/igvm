@@ -246,8 +246,9 @@ fn header_count(handle: IgvmHandle, section: IgvmHeaderSection) -> Result<i32, I
 
 /// Get the header type for the entry with the given index for a particular
 /// section in a previously parsed IGVM file.
-/// The version string type does not include the optional bit. Its binary
-/// header returned by [`igvm_get_header()`] includes that bit.
+///
+/// Returns the header type defined by the IGVM specification, without the
+/// optional bit. Use [`igvm_get_header()`] to get its binary representation.
 fn get_header_type(
     handle: IgvmHandle,
     section: IgvmHeaderSection,
@@ -284,6 +285,9 @@ fn get_header_type(
 /// Prepare a buffer containing the header data in binary form for the entry
 /// with the given index for a particular section in a previously parsed IGVM
 /// file.
+///
+/// Returns the serialized binary representation of the header. Its type may
+/// include the optional bit, unlike [`igvm_get_header_type()`].
 fn get_header(
     handle: IgvmHandle,
     section: IgvmHeaderSection,
@@ -467,8 +471,9 @@ pub extern "C" fn igvm_header_count(handle: IgvmHandle, section: IgvmHeaderSecti
 
 /// Get the header type for the entry with the given index for a particular
 /// section in a previously parsed IGVM file.
-/// The version string type does not include the optional bit. Its binary
-/// header returned by [`igvm_get_header()`] includes that bit.
+///
+/// Returns the header type defined by the IGVM specification, without the
+/// optional bit. Use [`igvm_get_header()`] to get its binary representation.
 ///
 /// If any error occurs then the returned value will be less than zero and will
 /// match one of the IGVMAPI error codes.
@@ -486,6 +491,9 @@ pub extern "C" fn igvm_get_header_type(
 /// Prepare a buffer containing the header data in binary form for the entry
 /// with the given index for a particular section in a previously parsed IGVM
 /// file.
+///
+/// Returns the serialized binary representation of the header. Its type may
+/// include the optional bit, unlike [`igvm_get_header_type()`].
 ///
 /// The buffer containing the data is returned via a handle from this function.
 /// The handle can be used to access a raw pointer to the data and to query its
