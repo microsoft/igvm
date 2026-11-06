@@ -23,7 +23,7 @@ PROFILE = $(if $(RELEASE),release,debug)
 TARGET_PATH = "$(IGVM_DIR)/$(TARGET_DIR)/$(CARGO_BUILD_TARGET)/$(PROFILE)"
 LIB_PATH = "$(IGVM_DIR)/$(TARGET_DIR)/$(or $(CARGO_BUILD_TARGET),$(CARGO_BUILD_HOST))/$(PROFILE)"
 
-RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_DIR)/igvm_defs/src/lib.rs
+RUST_SOURCE := $(IGVM_DIR)/igvm/src/c_api.rs $(IGVM_DIR)/igvm/src/lib.rs $(IGVM_DIR)/igvm/src/measurement/snp.rs $(IGVM_DIR)/igvm_defs/src/lib.rs
 LIBIGVM = $(LIB_PATH)/libigvm.a
 UNINSTALLED_PC = $(LIB_PATH)/igvm-uninstalled.pc
 IGVM_LIBS = $(shell pkg-config --libs --static $(UNINSTALLED_PC))
@@ -32,7 +32,7 @@ IGVM_LIBS_STATIC = $(subst $(IGVM_LIBS), -ligvm, $(LIBIGVM))
 # Determine igvm crate version from Cargo.toml
 VERSION = $(shell sed -n 's/^version = "\(.*\)"/\1/p' $(IGVM_DIR)/igvm/Cargo.toml)
 
-.PHONY: all build test clean install
+.PHONY: all build test test-headers clean install
 
 all: build test
 
@@ -47,7 +47,7 @@ $(TARGET_PATH)/libigvm_defs.rlib:
 $(TARGET_PATH)/test_data$(EXE):
 	$(CARGO) build $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm_c/test_data/Cargo.toml
 
-$(API_DIR)/include/igvm.h: $(RUST_SOURCE)
+$(API_DIR)/include/igvm.h: $(RUST_SOURCE) $(API_DIR)/cbindgen_igvm.toml $(API_DIR)/cbindgen_igvm_defs.toml
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm.toml $(IGVM_DIR)/igvm -o "$(API_DIR)/include/igvm.h"
 	cbindgen -q -c $(API_DIR)/cbindgen_igvm_defs.toml $(IGVM_DIR)/igvm_defs -o "$(API_DIR)/include/igvm_defs.h"
 	$(API_DIR)/scripts/post_process.sh "$(API_DIR)/include"
@@ -61,7 +61,11 @@ $(TARGET_PATH)/igvm_test$(EXE): $(API_DIR)/tests/igvm_test.c $(API_DIR)/include/
 $(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data$(EXE)
 	$(TARGET_PATH)/test_data$(EXE) $(TARGET_PATH)/igvm.bin
 
-test: $(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
+test-headers: $(API_DIR)/include/igvm.h
+	$(CC) $(CFLAGS) -I $(API_DIR) -fsyntax-only $(API_DIR)/tests/header_compat.c
+	$(CXX) $(CXXFLAGS) -I $(API_DIR) -x c++ -fsyntax-only $(API_DIR)/tests/header_compat.c
+
+test: test-headers $(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
 	$(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
 	$(CARGO) test --features $(FEATURES) $(EXTRA_PARAMS) --manifest-path=$(IGVM_DIR)/igvm/Cargo.toml
 

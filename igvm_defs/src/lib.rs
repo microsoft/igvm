@@ -564,6 +564,8 @@ pub struct TdxPolicy {
 /// Hash algorithms for Arm CCA used in [`CcaPolicy::hash_algorithm`].
 /// These algorithms correspond to those defined in the RMM specification,
 /// section "C2.24 RmmHashAlgorithm type".
+/// cbindgen:prefix-with-name=true
+/// cbindgen:rename-all=ScreamingSnakeCase
 #[open_enum]
 #[derive(IntoBytes, Immutable, KnownLayout, FromBytes, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
