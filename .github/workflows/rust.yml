@@ -56,6 +56,8 @@ jobs:
         run: sudo apt-get install -y libcunit1-dev
       - name: Build and test
         run: make -f igvm_c/Makefile EXTRA_PARAMS=--locked
+      - name: Check C++11 headers
+        run: make -f igvm_c/Makefile test-headers-cxx EXTRA_PARAMS=--locked
 
   miri:
     name: "Miri"

@@ -32,7 +32,7 @@ IGVM_LIBS_STATIC = $(subst $(IGVM_LIBS), -ligvm, $(LIBIGVM))
 # Determine igvm crate version from Cargo.toml
 VERSION = $(shell sed -n 's/^version = "\(.*\)"/\1/p' $(IGVM_DIR)/igvm/Cargo.toml)
 
-.PHONY: all build test test-headers clean install
+.PHONY: all build test test-headers test-headers-cxx clean install
 
 all: build test
 
@@ -63,7 +63,9 @@ $(TARGET_PATH)/igvm.bin: $(TARGET_PATH)/test_data$(EXE)
 
 test-headers: $(API_DIR)/include/igvm.h
 	$(CC) $(CFLAGS) -I $(API_DIR) -fsyntax-only $(API_DIR)/tests/header_compat.c
-	$(CXX) $(CXXFLAGS) -I $(API_DIR) -x c++ -fsyntax-only $(API_DIR)/tests/header_compat.c
+
+test-headers-cxx: $(API_DIR)/include/igvm.h
+	$(CXX) $(CXXFLAGS) -std=c++11 -I $(API_DIR) -x c++ -fsyntax-only $(API_DIR)/tests/header_compat.c
 
 test: test-headers $(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
 	$(TARGET_PATH)/igvm_test$(EXE) $(TARGET_PATH)/igvm.bin
