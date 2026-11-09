@@ -1077,8 +1077,8 @@ impl fmt::Display for IgvmDirectiveHeader {
                 writeln!(f, "\t\tcompatibility_mask: {:#X}", compatibility_mask)?;
                 writeln!(f, "\t\tauthor_key_enabled: {:#X}", author_key_enabled)?;
                 writeln!(f, "\t\tld: {}", hex::encode_upper(ld))?;
-                writeln!(f, "\t\tfamily_id: {:#X}", family_id[0])?;
-                writeln!(f, "\t\timage_id: {:#X}", image_id[0])?;
+                writeln!(f, "\t\tfamily_id: 0x{}", hex::encode_upper(family_id))?;
+                writeln!(f, "\t\timage_id: 0x{}", hex::encode_upper(image_id))?;
                 writeln!(f, "\t\tversion: {:#X}", version)?;
                 writeln!(f, "\t\tguest_svn: {:#X}", guest_svn)?;
                 writeln!(f, "\t\tid_key_algorithm: {:#X}", id_key_algorithm)?;
@@ -4007,6 +4007,31 @@ mod tests {
     use super::*;
     use crate::hv_defs::HvArm64RegisterName;
     use crate::hv_defs::HvRegisterValue;
+
+    #[test]
+    fn snp_id_block_display_preserves_full_ids() {
+        use zerocopy::FromZeros;
+
+        let header = IgvmDirectiveHeader::SnpIdBlock {
+            compatibility_mask: 1,
+            author_key_enabled: 0,
+            reserved: [0; 3],
+            ld: [0; 48],
+            family_id: core::array::from_fn(|i| i as u8),
+            image_id: core::array::from_fn(|i| 0xff - i as u8),
+            version: 1,
+            guest_svn: 0,
+            id_key_algorithm: 0,
+            author_key_algorithm: 0,
+            id_key_signature: Box::new(IGVM_VHS_SNP_ID_BLOCK_SIGNATURE::new_zeroed()),
+            id_public_key: Box::new(IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY::new_zeroed()),
+            author_key_signature: Box::new(IGVM_VHS_SNP_ID_BLOCK_SIGNATURE::new_zeroed()),
+            author_public_key: Box::new(IGVM_VHS_SNP_ID_BLOCK_PUBLIC_KEY::new_zeroed()),
+        };
+        let output = header.to_string();
+        assert!(output.contains("\t\tfamily_id: 0x000102030405060708090A0B0C0D0E0F\n"));
+        assert!(output.contains("\t\timage_id: 0xFFFEFDFCFBFAF9F8F7F6F5F4F3F2F1F0\n"));
+    }
 
     fn new_platform(
         compatibility_mask: u32,
