@@ -67,6 +67,10 @@ pub mod snp_defs;
 #[allow(non_camel_case_types)]
 type u64_le = zerocopy::U64<zerocopy::LittleEndian>;
 
+const OPTIONAL_VERSION_STRING_HEADER: IgvmVariableHeaderType = IgvmVariableHeaderType(
+    IgvmVariableHeaderType::IGVM_VHT_VERSION_STRING.0 | IGVM_VHT_OPTIONAL_BIT,
+);
+
 /// The guest isolation type of the platform.
 #[derive(Debug, PartialEq, Eq)]
 pub enum IsolationType {
@@ -122,7 +126,7 @@ fn read_header<T: FromBytes + Immutable + KnownLayout>(
 
 /// Helper function to append a given binary header to a variable header
 /// section.
-fn append_header<T: IntoBytes + Immutable + KnownLayout>(
+fn append_header<T: IntoBytes + Immutable + KnownLayout + ?Sized>(
     header: &T,
     header_type: IgvmVariableHeaderType,
     variable_headers: &mut Vec<u8>,
@@ -344,6 +348,9 @@ impl IgvmPlatformHeader {
 /// structure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IgvmInitializationHeader {
+    /// A file-wide UTF-8 version label, with no required version syntax.
+    /// At most one may be present. Serialized inline as an optional header.
+    VersionString(String),
     GuestPolicy {
         policy: u64,
         compatibility_mask: u32,
@@ -398,6 +405,7 @@ impl IgvmInitializationHeader {
     /// Get the in file variable header size of the given type.
     fn header_size(&self) -> usize {
         let additional = match self {
+            IgvmInitializationHeader::VersionString(value) => value.len(),
             IgvmInitializationHeader::GuestPolicy { .. } => size_of::<IGVM_VHS_GUEST_POLICY>(),
             IgvmInitializationHeader::CcaPolicy { .. } => size_of::<IGVM_VHS_CCA_POLICY>(),
             IgvmInitializationHeader::RelocatableRegion { .. } => {
@@ -420,6 +428,9 @@ impl IgvmInitializationHeader {
     #[cfg_attr(docsrs, doc(cfg(feature = "igvm-c")))]
     fn header_type(&self) -> IgvmVariableHeaderType {
         match self {
+            IgvmInitializationHeader::VersionString(_) => {
+                IgvmVariableHeaderType::IGVM_VHT_VERSION_STRING
+            }
             IgvmInitializationHeader::GuestPolicy { .. } => {
                 IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY
             }
@@ -458,6 +469,16 @@ impl IgvmInitializationHeader {
         }
 
         match self {
+            IgvmInitializationHeader::VersionString(value) => {
+                u32::try_from(value.len())
+                    .map_err(|_| BinaryHeaderError::InvalidVariableHeaderSize)?;
+                value
+                    .len()
+                    .checked_add(7)
+                    .and_then(|length| (length & !7).checked_add(8))
+                    .ok_or(BinaryHeaderError::InvalidVariableHeaderSize)?;
+                Ok(())
+            }
             IgvmInitializationHeader::GuestPolicy {
                 policy: _,
                 compatibility_mask: _,
@@ -592,6 +613,22 @@ impl IgvmInitializationHeader {
             };
 
         let header = match typ {
+            IgvmVariableHeaderType::IGVM_VHT_VERSION_STRING | OPTIONAL_VERSION_STRING_HEADER => {
+                let padded_length = length
+                    .checked_add(7)
+                    .map(|length| length & !7)
+                    .ok_or(BinaryHeaderError::InvalidVariableHeaderSize)?;
+                let body = variable_headers
+                    .get(..padded_length)
+                    .ok_or(BinaryHeaderError::InvalidVariableHeaderSize)?;
+                if body[length..].iter().any(|byte| *byte != 0) {
+                    return Err(BinaryHeaderError::ReservedNotZero);
+                }
+                let value = std::str::from_utf8(&body[..length])
+                    .map_err(BinaryHeaderError::InvalidVersionString)?;
+                variable_headers = &variable_headers[padded_length..];
+                IgvmInitializationHeader::VersionString(value.to_owned())
+            }
             IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY
                 if length == size_of::<IGVM_VHS_GUEST_POLICY>() =>
             {
@@ -750,6 +787,7 @@ impl IgvmInitializationHeader {
         use IgvmInitializationHeader::*;
 
         match self {
+            VersionString(_) => None,
             GuestPolicy {
                 compatibility_mask, ..
             } => Some(*compatibility_mask),
@@ -785,6 +823,13 @@ impl IgvmInitializationHeader {
         let _ = file_data;
 
         match self {
+            IgvmInitializationHeader::VersionString(value) => {
+                append_header(
+                    value.as_bytes(),
+                    OPTIONAL_VERSION_STRING_HEADER,
+                    variable_headers,
+                );
+            }
             IgvmInitializationHeader::GuestPolicy {
                 policy,
                 compatibility_mask,
@@ -1180,6 +1225,12 @@ impl fmt::Display for IgvmDirectiveHeader {
 /// versa.
 #[derive(Debug, Error)]
 pub enum BinaryHeaderError {
+    #[error("version string is not valid UTF-8")]
+    InvalidVersionString(#[source] std::str::Utf8Error),
+    #[error("multiple version string headers")]
+    MultipleVersionStrings,
+    #[error("merged files have different version strings")]
+    ConflictingVersionStrings,
     #[error("address {0} is not aligned")]
     UnalignedAddress(u64),
     #[error("size {0} is not aligned")]
@@ -2832,6 +2883,25 @@ impl IgvmFile {
         }
     }
 
+    fn validate_version_string_headers(
+        initialization_headers: &[IgvmInitializationHeader],
+    ) -> Result<Option<&str>, Error> {
+        let mut version = None;
+        for header in initialization_headers {
+            if let IgvmInitializationHeader::VersionString(value) = header {
+                header
+                    .validate()
+                    .map_err(Error::InvalidBinaryInitializationHeader)?;
+                if version.replace(value.as_str()).is_some() {
+                    return Err(Error::InvalidBinaryInitializationHeader(
+                        BinaryHeaderError::MultipleVersionStrings,
+                    ));
+                }
+            }
+        }
+        Ok(version)
+    }
+
     /// Check if the given initialization headers are valid.
     ///
     /// Returns additional info used to validate directive headers.
@@ -2840,6 +2910,7 @@ impl IgvmFile {
         platform_headers: &[IgvmPlatformHeader],
         initialization_headers: &[IgvmInitializationHeader],
     ) -> Result<DirectiveHeaderValidationInfo, Error> {
+        Self::validate_version_string_headers(initialization_headers)?;
         let mut page_table_masks = 0;
         let mut used_vp_idents: Vec<VpIdentifier> = Vec::new();
         let mut reloc_regions: HashMap<u32, RangeMap<u64, ()>> = HashMap::new();
@@ -2896,6 +2967,7 @@ impl IgvmFile {
             //  - Keep track of which page table regions, vp_index, and vtls for
             //    use in validating directive headers.
             match header {
+                IgvmInitializationHeader::VersionString(_) => {}
                 IgvmInitializationHeader::CcaPolicy {
                     compatibility_mask, ..
                 } => {
@@ -3190,6 +3262,7 @@ impl IgvmFile {
     /// output Vec.
     pub fn serialize(&self, output: &mut Vec<u8>) -> Result<(), Error> {
         IgvmFile::validate_platform_headers(self.revision, self.platform_headers.iter())?;
+        Self::validate_version_string_headers(&self.initialization_headers)?;
 
         // Build the variable header and file data section by looping through each header type.
         // First, calculate the starting data file offset relative to the rest of the file.
@@ -3334,7 +3407,8 @@ impl IgvmFile {
 
     /// Create a new [`IgvmFile`] from a serialized binary representation. An
     /// optional filter can be specified to filter headers that do not apply to
-    /// the given isolation platform.
+    /// the given isolation platform. Only the version string header supports
+    /// the optional bit; other optional headers are not supported.
     pub fn new_from_binary(
         file: &[u8],
         isolation_filter: Option<IsolationType>,
@@ -3437,14 +3511,18 @@ impl IgvmFile {
             // Peek the next fixed variable header to determine what kind of header to parse
             match IGVM_VHS_VARIABLE_HEADER::read_from_prefix(variable_headers)
                 .ok()
-                .map(|h| h.0)
-            {
+                .map(|h| {
+                    let mut header = h.0;
+                    if header.typ == OPTIONAL_VERSION_STRING_HEADER {
+                        header.typ = IgvmVariableHeaderType::IGVM_VHT_VERSION_STRING;
+                    }
+                    header
+                }) {
                 Some(header) if IGVM_VHT_RANGE_PLATFORM.contains(&header.typ.0) => {
                     if parsing_stage != VariableHeaderParsingStage::Platform {
                         // Only legal to parse platform headers before other types
                         return Err(Error::InvalidBinaryVariableHeaderSection);
                     }
-
                     let (header, new_slice) =
                         IgvmPlatformHeader::new_from_binary_split(variable_headers)
                             .map_err(Error::InvalidBinaryPlatformHeader)?;
@@ -3475,7 +3553,6 @@ impl IgvmFile {
                             return Err(Error::InvalidBinaryVariableHeaderSection);
                         }
                     }
-
                     let (header, new_slice) = IgvmInitializationHeader::new_from_binary_split(
                         variable_headers,
                         file_data,
@@ -3491,7 +3568,6 @@ impl IgvmFile {
                             continue;
                         }
                     }
-
                     initialization_headers.push(header);
                 }
                 Some(header) if IGVM_VHT_RANGE_DIRECTIVE.contains(&header.typ.0) => {
@@ -3502,7 +3578,6 @@ impl IgvmFile {
                         }
                         VariableHeaderParsingStage::Directive => {}
                     }
-
                     let compatibility_mask_to_platforms =
                         |mask: u32| -> Option<IgvmPlatformType> { mask_map.get(&mask).copied() };
 
@@ -3549,6 +3624,17 @@ impl IgvmFile {
     /// Get the initialization headers in this file.
     pub fn initializations(&self) -> &[IgvmInitializationHeader] {
         self.initialization_headers.as_slice()
+    }
+
+    /// Get the file-wide version label, if present.
+    pub fn version_string(&self) -> Option<&str> {
+        self.initialization_headers.iter().find_map(|header| {
+            if let IgvmInitializationHeader::VersionString(value) = header {
+                Some(value.as_str())
+            } else {
+                None
+            }
+        })
     }
 
     /// Get a mutable reference to the initialization headers in this file.
@@ -3741,6 +3827,19 @@ impl IgvmFile {
             return Err(Error::MergeRevision);
         }
 
+        let self_version = Self::validate_version_string_headers(&self.initialization_headers)?;
+        let other_version = Self::validate_version_string_headers(&other.initialization_headers)?;
+        if let (Some(left), Some(right)) = (self_version, other_version) {
+            if left != right {
+                return Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::ConflictingVersionStrings,
+                ));
+            }
+            other
+                .initialization_headers
+                .retain(|header| !matches!(header, IgvmInitializationHeader::VersionString(_)));
+        }
+
         Self::validate_platform_headers(
             self.revision,
             self.platform_headers
@@ -3865,6 +3964,7 @@ impl IgvmFile {
 
         for header in &mut other.initialization_headers {
             match header {
+                IgvmInitializationHeader::VersionString(_) => {}
                 IgvmInitializationHeader::GuestPolicy {
                     policy: _,
                     compatibility_mask,
@@ -3985,6 +4085,9 @@ impl IgvmFile {
     /// merging is stable and will not modify the relative order of directives
     /// in both IGVM files.
     ///
+    /// A sole version string is retained. Identical version strings are
+    /// collapsed; different strings cause an error before modifying `self`.
+    ///
     /// The runtime of this function is O(n*m) where n is the number of headers
     /// in self, and m is the number of headers in other.
     pub fn merge(&mut self, other: IgvmFile) -> Result<(), Error> {
@@ -3994,6 +4097,8 @@ impl IgvmFile {
     /// Merge `other` into self, only fixing up compatibilty masks and parameter
     /// area indices as necessary, like [`Self::merge`]. No deduplication of
     /// headers will be done.
+    /// Identical version strings are still collapsed to keep a single label;
+    /// different strings cause an error before modifying `self`.
     ///
     /// The runtime of this function is O(n+m) where n is the number of headers
     /// in self, and m is the number of headers in other.
@@ -4097,6 +4202,436 @@ mod tests {
             parameter_area_index: index,
             compatibility_mask: mask,
         })
+    }
+
+    mod version_string {
+        use super::*;
+
+        fn file(platform: IgvmPlatformType, version: Option<&str>) -> IgvmFile {
+            IgvmFile::new(
+                IgvmRevision::V1,
+                vec![new_platform(1, platform)],
+                version
+                    .map(|value| IgvmInitializationHeader::VersionString(value.to_owned()))
+                    .into_iter()
+                    .collect(),
+                vec![new_page_data(0, 1, &[0x42; 4096])],
+            )
+            .unwrap()
+        }
+
+        fn binary_with_headers(headers: &[u8]) -> Vec<u8> {
+            let mut variable_headers = Vec::new();
+            let IgvmPlatformHeader::SupportedPlatform(platform) =
+                new_platform(1, IgvmPlatformType::VSM_ISOLATION);
+            append_header(
+                &platform,
+                IgvmVariableHeaderType::IGVM_VHT_SUPPORTED_PLATFORM,
+                &mut variable_headers,
+            );
+            variable_headers.extend_from_slice(headers);
+            let data = if variable_headers.len() % 8 == 0 {
+                let directive = new_page_data(0, 1, &[0x42; 4096]);
+                let mut data = FileDataSerializer::new(
+                    size_of::<IGVM_FIXED_HEADER>()
+                        + variable_headers.len()
+                        + directive.header_size(),
+                );
+                directive
+                    .write_binary_header(&mut variable_headers, &mut data)
+                    .unwrap();
+                data.take()
+            } else {
+                vec![0]
+            };
+            let mut fixed = IGVM_FIXED_HEADER {
+                magic: IGVM_MAGIC_VALUE,
+                format_version: IGVM_FORMAT_VERSION_1,
+                variable_header_offset: size_of::<IGVM_FIXED_HEADER>() as u32,
+                variable_header_size: variable_headers.len() as u32,
+                total_file_size: (size_of::<IGVM_FIXED_HEADER>()
+                    + variable_headers.len()
+                    + data.len()) as u32,
+                checksum: 0,
+            };
+            let mut hasher = crc32fast::Hasher::new();
+            hasher.update(fixed.as_bytes());
+            hasher.update(&variable_headers);
+            fixed.checksum = hasher.finalize();
+            let mut binary = fixed.as_bytes().to_vec();
+            binary.extend(variable_headers);
+            binary.extend(data);
+            binary
+        }
+
+        fn version_header(value: &[u8], optional: bool) -> Vec<u8> {
+            let mut binary = Vec::new();
+            append_header(
+                value,
+                IgvmVariableHeaderType(
+                    IgvmVariableHeaderType::IGVM_VHT_VERSION_STRING.0
+                        | if optional { IGVM_VHT_OPTIONAL_BIT } else { 0 },
+                ),
+                &mut binary,
+            );
+            binary
+        }
+
+        #[test]
+        fn round_trip() {
+            for revision in [
+                IgvmRevision::V1,
+                IgvmRevision::V2 {
+                    arch: Arch::X64,
+                    page_size: PAGE_SIZE_4K as u32,
+                },
+                IgvmRevision::V2 {
+                    arch: Arch::AArch64,
+                    page_size: PAGE_SIZE_4K as u32,
+                },
+            ] {
+                for value in ["", "v1.2.3", "12345678", "\u{e9}\u{1f680}", "v1\0build"] {
+                    let mut file = file(IgvmPlatformType::VSM_ISOLATION, Some(value));
+                    file.revision = revision;
+                    file.initialization_headers.insert(
+                        0,
+                        IgvmInitializationHeader::GuestPolicy {
+                            policy: 1,
+                            compatibility_mask: 1,
+                        },
+                    );
+                    file.initialization_headers
+                        .push(IgvmInitializationHeader::GuestPolicy {
+                            policy: 0,
+                            compatibility_mask: 1,
+                        });
+                    let mut binary = Vec::new();
+                    file.serialize(&mut binary).unwrap();
+                    let parsed = IgvmFile::new_from_binary(&binary, None).unwrap();
+                    assert_eq!(parsed.version_string(), Some(value));
+                    assert_eq!(parsed.initializations(), file.initializations());
+                    assert_eq!(parsed.directives(), file.directives());
+                    let mut reserialized = Vec::new();
+                    parsed.serialize(&mut reserialized).unwrap();
+                    assert_eq!(binary, reserialized);
+                }
+            }
+        }
+
+        #[test]
+        fn inline_optional_wire_format() {
+            let value = "\u{e9}build";
+            let header = IgvmInitializationHeader::VersionString(value.to_owned());
+            let mut binary = Vec::new();
+            let mut data = FileDataSerializer::new(0);
+            header.write_binary_header(&mut binary, &mut data).unwrap();
+            let common = IGVM_VHS_VARIABLE_HEADER::read_from_prefix(&binary)
+                .unwrap()
+                .0;
+            assert_eq!(common.typ.0, 0x80000107);
+            assert_eq!(common.length as usize, value.len());
+            assert_eq!(&binary[8..8 + value.len()], value.as_bytes());
+            assert!(binary[8 + value.len()..].iter().all(|byte| *byte == 0));
+            assert_eq!(binary.len(), header.header_size());
+            assert!(data.take().is_empty());
+            assert_eq!(header.compatibility_mask(), None);
+            #[cfg(feature = "igvm-c")]
+            assert_eq!(
+                header.header_type().0,
+                common.typ.0 & !IGVM_VHT_OPTIONAL_BIT
+            );
+        }
+
+        #[test]
+        fn accepts_both_forms_and_normalizes_to_optional() {
+            for optional in [false, true] {
+                let binary = binary_with_headers(&version_header(b"build", optional));
+                let file = IgvmFile::new_from_binary(&binary, None).unwrap();
+                let mut output = Vec::new();
+                file.serialize(&mut output).unwrap();
+                assert_eq!(output, binary_with_headers(&version_header(b"build", true)));
+            }
+            let file = file(IgvmPlatformType::VSM_ISOLATION, None);
+            assert_eq!(file.version_string(), None);
+        }
+
+        #[test]
+        fn middle_initialization_header_accepts_both_forms() {
+            let before = IgvmInitializationHeader::GuestPolicy {
+                policy: 1,
+                compatibility_mask: 1,
+            };
+            let after = IgvmInitializationHeader::GuestPolicy {
+                policy: 0,
+                compatibility_mask: 1,
+            };
+            let mut expected = file(IgvmPlatformType::VSM_ISOLATION, Some("build"));
+            expected.initialization_headers.insert(0, before.clone());
+            expected.initialization_headers.push(after.clone());
+            let mut canonical = Vec::new();
+            expected.serialize(&mut canonical).unwrap();
+
+            for optional in [false, true] {
+                let mut headers = Vec::new();
+                let mut data = FileDataSerializer::new(0);
+                before.write_binary_header(&mut headers, &mut data).unwrap();
+                headers.extend(version_header(b"build", optional));
+                after.write_binary_header(&mut headers, &mut data).unwrap();
+                let binary = binary_with_headers(&headers);
+                let parsed = IgvmFile::new_from_binary(&binary, None).unwrap();
+                assert_eq!(parsed.initializations(), expected.initializations());
+                assert_eq!(parsed.directives(), expected.directives());
+                let mut output = Vec::new();
+                parsed.serialize(&mut output).unwrap();
+                assert_eq!(output, canonical);
+            }
+        }
+
+        #[test]
+        fn survives_isolation_filter() {
+            let mut file = file(IgvmPlatformType::VSM_ISOLATION, Some("build"));
+            file.platform_headers
+                .push(new_platform(2, IgvmPlatformType::SEV_SNP));
+            file.initialization_headers
+                .push(IgvmInitializationHeader::GuestPolicy {
+                    policy: 0,
+                    compatibility_mask: 2,
+                });
+            let mut binary = Vec::new();
+            file.serialize(&mut binary).unwrap();
+            let parsed = IgvmFile::new_from_binary(&binary, Some(IsolationType::Vbs)).unwrap();
+            assert_eq!(parsed.version_string(), Some("build"));
+            assert_eq!(parsed.initializations().len(), 1);
+        }
+
+        #[test]
+        fn rejects_invalid_payloads() {
+            for optional in [false, true] {
+                let mut invalid_padding = version_header(b"a", optional);
+                *invalid_padding.last_mut().unwrap() = 1;
+                let mut truncated_padding = version_header(b"a", optional);
+                truncated_padding.pop();
+                let mut truncated_body = version_header(b"12345678", optional);
+                truncated_body.pop();
+                for header in [
+                    version_header(&[0xff], optional),
+                    invalid_padding,
+                    truncated_padding,
+                    truncated_body,
+                    IGVM_VHS_VARIABLE_HEADER {
+                        typ: IgvmVariableHeaderType(
+                            0x107 | if optional { IGVM_VHT_OPTIONAL_BIT } else { 0 },
+                        ),
+                        length: u32::MAX,
+                    }
+                    .as_bytes()
+                    .to_vec(),
+                ] {
+                    assert!(matches!(
+                        IgvmFile::new_from_binary(&binary_with_headers(&header), None),
+                        Err(Error::InvalidBinaryInitializationHeader(_))
+                    ));
+                }
+            }
+        }
+
+        #[test]
+        fn rejects_duplicates_at_every_entry_point() {
+            let header = IgvmInitializationHeader::VersionString("build".to_owned());
+            assert!(matches!(
+                IgvmFile::new(
+                    IgvmRevision::V1,
+                    vec![new_platform(1, IgvmPlatformType::VSM_ISOLATION)],
+                    vec![header.clone(), header.clone()],
+                    vec![],
+                ),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MultipleVersionStrings
+                ))
+            ));
+            let mut file = file(IgvmPlatformType::VSM_ISOLATION, Some("build"));
+            file.initialization_headers.push(header);
+            let mut output = vec![0x42];
+            assert!(matches!(
+                file.serialize(&mut output),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MultipleVersionStrings
+                ))
+            ));
+            assert_eq!(output, [0x42]);
+            let mut headers = version_header(b"build", false);
+            headers.extend(version_header(b"build", true));
+            assert!(matches!(
+                IgvmFile::new_from_binary(&binary_with_headers(&headers), None),
+                Err(Error::InvalidBinaryInitializationHeader(
+                    BinaryHeaderError::MultipleVersionStrings
+                ))
+            ));
+        }
+
+        #[test]
+        fn merge_policy() {
+            for simple in [false, true] {
+                for (left, right, expected) in [
+                    (None, None, None),
+                    (Some("build"), None, Some("build")),
+                    (None, Some("build"), Some("build")),
+                    (Some("build"), Some("build"), Some("build")),
+                ] {
+                    let mut left = file(IgvmPlatformType::VSM_ISOLATION, left);
+                    let right = file(IgvmPlatformType::SEV_SNP, right);
+                    if simple {
+                        left.merge_simple(right).unwrap();
+                    } else {
+                        left.merge(right).unwrap();
+                    }
+                    assert_eq!(left.version_string(), expected);
+                    assert_eq!(
+                        left.initializations().len(),
+                        usize::from(expected.is_some())
+                    );
+                    let mut binary = Vec::new();
+                    left.serialize(&mut binary).unwrap();
+                    assert_eq!(
+                        IgvmFile::new_from_binary(&binary, None)
+                            .unwrap()
+                            .version_string(),
+                        expected
+                    );
+                }
+                let mut left = file(IgvmPlatformType::VSM_ISOLATION, Some("left"));
+                let right = file(IgvmPlatformType::SEV_SNP, Some("right"));
+                let mut before = Vec::new();
+                left.serialize(&mut before).unwrap();
+                let result = if simple {
+                    left.merge_simple(right)
+                } else {
+                    left.merge(right)
+                };
+                assert!(matches!(
+                    result,
+                    Err(Error::InvalidBinaryInitializationHeader(
+                        BinaryHeaderError::ConflictingVersionStrings
+                    ))
+                ));
+                let mut after = Vec::new();
+                left.serialize(&mut after).unwrap();
+                assert_eq!(before, after);
+            }
+        }
+
+        #[test]
+        fn other_optional_headers_remain_unsupported() {
+            let IgvmPlatformHeader::SupportedPlatform(platform) =
+                new_platform(1, IgvmPlatformType::VSM_ISOLATION);
+            let mut headers = Vec::new();
+            append_header(
+                &platform,
+                IgvmVariableHeaderType(
+                    IgvmVariableHeaderType::IGVM_VHT_SUPPORTED_PLATFORM.0 | IGVM_VHT_OPTIONAL_BIT,
+                ),
+                &mut headers,
+            );
+            assert!(matches!(
+                IgvmPlatformHeader::new_from_binary_split(&headers),
+                Err(BinaryHeaderError::InvalidVariableHeaderType)
+            ));
+            assert!(matches!(
+                IgvmFile::new_from_binary(&binary_with_headers(&headers), None),
+                Err(Error::InvalidBinaryVariableHeaderSection)
+            ));
+
+            headers.clear();
+            append_header(
+                &IGVM_VHS_GUEST_POLICY {
+                    policy: 0,
+                    compatibility_mask: 1,
+                    reserved: 0,
+                },
+                IgvmVariableHeaderType(
+                    IgvmVariableHeaderType::IGVM_VHT_GUEST_POLICY.0 | IGVM_VHT_OPTIONAL_BIT,
+                ),
+                &mut headers,
+            );
+            assert!(matches!(
+                IgvmInitializationHeader::new_from_binary_split(&headers, &[], 0),
+                Err(BinaryHeaderError::InvalidVariableHeaderType)
+            ));
+            assert!(matches!(
+                IgvmFile::new_from_binary(&binary_with_headers(&headers), None),
+                Err(Error::InvalidBinaryVariableHeaderSection)
+            ));
+
+            headers.clear();
+            append_header(
+                &IGVM_VHS_ERROR_RANGE {
+                    gpa: 0,
+                    compatibility_mask: 1,
+                    size_bytes: 4096,
+                },
+                IgvmVariableHeaderType(
+                    IgvmVariableHeaderType::IGVM_VHT_ERROR_RANGE.0 | IGVM_VHT_OPTIONAL_BIT,
+                ),
+                &mut headers,
+            );
+            assert!(matches!(
+                IgvmFile::new_from_binary(&binary_with_headers(&headers), None),
+                Err(Error::InvalidBinaryVariableHeaderSection)
+            ));
+        }
+
+        #[test]
+        fn unknown_headers_remain_unsupported() {
+            for typ in [0x2, 0x104, 0x105, 0x108, 0x314, 0x500] {
+                for optional in [false, true] {
+                    let mut headers = Vec::new();
+                    append_header(
+                        b"unknown".as_slice(),
+                        IgvmVariableHeaderType(
+                            typ | if optional { IGVM_VHT_OPTIONAL_BIT } else { 0 },
+                        ),
+                        &mut headers,
+                    );
+                    assert!(
+                        IgvmFile::new_from_binary(&binary_with_headers(&headers), None).is_err()
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn version_string_requires_initialization_section() {
+            for optional in [false, true] {
+                let mut headers = Vec::new();
+                append_header(
+                    &IGVM_VHS_ERROR_RANGE {
+                        gpa: 0,
+                        compatibility_mask: 1,
+                        size_bytes: 4096,
+                    },
+                    IgvmVariableHeaderType::IGVM_VHT_ERROR_RANGE,
+                    &mut headers,
+                );
+                headers.extend(version_header(b"build", optional));
+                assert!(matches!(
+                    IgvmFile::new_from_binary(&binary_with_headers(&headers), None),
+                    Err(Error::InvalidBinaryVariableHeaderSection)
+                ));
+
+                let mut headers = version_header(b"build", optional);
+                let IgvmPlatformHeader::SupportedPlatform(platform) =
+                    new_platform(2, IgvmPlatformType::SEV_SNP);
+                append_header(
+                    &platform,
+                    IgvmVariableHeaderType::IGVM_VHT_SUPPORTED_PLATFORM,
+                    &mut headers,
+                );
+                assert!(matches!(
+                    IgvmFile::new_from_binary(&binary_with_headers(&headers), None),
+                    Err(Error::InvalidBinaryVariableHeaderSection)
+                ));
+            }
+        }
     }
 
     mod new_from_binary {

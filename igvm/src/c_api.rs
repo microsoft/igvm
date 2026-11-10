@@ -246,6 +246,9 @@ fn header_count(handle: IgvmHandle, section: IgvmHeaderSection) -> Result<i32, I
 
 /// Get the header type for the entry with the given index for a particular
 /// section in a previously parsed IGVM file.
+///
+/// Returns the header type defined by the IGVM specification, without the
+/// optional bit. Use [`igvm_get_header()`] to get its binary representation.
 fn get_header_type(
     handle: IgvmHandle,
     section: IgvmHeaderSection,
@@ -282,6 +285,9 @@ fn get_header_type(
 /// Prepare a buffer containing the header data in binary form for the entry
 /// with the given index for a particular section in a previously parsed IGVM
 /// file.
+///
+/// Returns the serialized binary representation of the header. Its type may
+/// include the optional bit, unlike [`igvm_get_header_type()`].
 fn get_header(
     handle: IgvmHandle,
     section: IgvmHeaderSection,
@@ -466,6 +472,9 @@ pub extern "C" fn igvm_header_count(handle: IgvmHandle, section: IgvmHeaderSecti
 /// Get the header type for the entry with the given index for a particular
 /// section in a previously parsed IGVM file.
 ///
+/// Returns the header type defined by the IGVM specification, without the
+/// optional bit. Use [`igvm_get_header()`] to get its binary representation.
+///
 /// If any error occurs then the returned value will be less than zero and will
 /// match one of the IGVMAPI error codes.
 #[no_mangle]
@@ -482,6 +491,9 @@ pub extern "C" fn igvm_get_header_type(
 /// Prepare a buffer containing the header data in binary form for the entry
 /// with the given index for a particular section in a previously parsed IGVM
 /// file.
+///
+/// Returns the serialized binary representation of the header. Its type may
+/// include the optional bit, unlike [`igvm_get_header_type()`].
 ///
 /// The buffer containing the data is returned via a handle from this function.
 /// The handle can be used to access a raw pointer to the data and to query its
@@ -567,6 +579,42 @@ mod tests {
             platform_version: 1,
             shared_gpa_boundary: 0,
         })
+    }
+
+    #[test]
+    fn c_api_version_string() {
+        let file = IgvmFile::new(
+            IgvmRevision::V1,
+            vec![new_platform(1, IgvmPlatformType::VSM_ISOLATION)],
+            vec![IgvmInitializationHeader::VersionString("build".to_owned())],
+            vec![],
+        )
+        .unwrap();
+        let igvm = super::igvm_create(file);
+        let section = IgvmHeaderSection::HEADER_SECTION_INITIALIZATION;
+        assert_eq!(
+            super::igvm_get_header_type(igvm, section, 0),
+            IgvmVariableHeaderType::IGVM_VHT_VERSION_STRING.0 as i32
+        );
+        let buffer = igvm_get_header(igvm, section, 0);
+        assert!(buffer > 0);
+        assert_eq!(igvm_get_buffer_size(igvm, buffer), 16);
+        {
+            let mut lock = super::IgvmFileHandleLock::new(igvm).unwrap();
+            let bytes = &lock.get_mut().unwrap().buffers[&buffer];
+            let (header, body) =
+                <IGVM_VHS_VARIABLE_HEADER as zerocopy::FromBytes>::read_from_prefix(bytes).unwrap();
+            assert_eq!(header.typ.0, 0x80000107);
+            assert_eq!(header.length, 5);
+            assert_eq!(&body[..5], b"build");
+            assert_eq!(&body[5..], &[0; 3]);
+        }
+        assert_eq!(
+            igvm_get_header_data(igvm, section, 0),
+            IgvmResult::IGVMAPI_NO_DATA.0
+        );
+        igvm_free_buffer(igvm, buffer);
+        igvm_free(igvm);
     }
 
     fn new_guest_policy(policy: u64, compatibility_mask: u32) -> IgvmInitializationHeader {
