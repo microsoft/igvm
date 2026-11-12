@@ -5,6 +5,7 @@
 # Author: Roy Hopkins <rhopkins@suse.de>
 
 language = "C"
+cpp_compat = true
 
 header = """
 /* 
@@ -28,6 +29,8 @@ no_includes = true
 
 [export]
 include = ["IgvmResult"]
+# These constants belong to the private SNP measurement implementation.
+exclude = ["NORMAL", "VMSA", "UNMEASURED", "SECRETS", "CPUID"]
 
 [export.rename]
 "X64_PAGE_SIZE" = "IGVM_X64_PAGE_SIZE"

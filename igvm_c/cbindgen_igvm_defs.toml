@@ -5,6 +5,7 @@
 # Author: Roy Hopkins <rhopkins@suse.de>
 
 language = "C"
+cpp_compat = true
 
 header = """
 /* 
@@ -84,6 +85,7 @@ include = ["IGVM_FIXED_HEADER",
 exclude = ["IgvmPageDataFlags", "RequiredMemoryFlags", "MemoryMapEntryFlags"]
 
 [export.rename]
+"CcaHashAlgorithm" = "IgvmCcaHashAlgorithm"
 "MemoryMapEntryType" = "IgvmMemoryMapEntryType"
 "SnpPolicy" = "IgvmSnpPolicy"
 "TdxPolicy" = "IgvmTdxPolicy"
