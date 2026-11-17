@@ -597,20 +597,25 @@ impl IgvmInitializationHeader {
         let _ = (file_data, file_data_start);
 
         #[cfg(feature = "corim")]
-        let extract_file_data =
-            |file_offset: u32, size: usize| -> Result<Vec<u8>, BinaryHeaderError> {
-                if file_offset == 0 {
-                    return Ok(Vec::new());
-                }
+        let extract_file_data = |file_offset: u32,
+                                 size: usize|
+         -> Result<Vec<u8>, BinaryHeaderError> {
+            if file_offset == 0 {
+                return Ok(Vec::new());
+            }
 
-                let start = (file_offset - file_data_start) as usize;
-                let end = start + size;
+            let start = file_offset
+                .checked_sub(file_data_start)
+                .ok_or(BinaryHeaderError::InvalidDataSize)? as usize;
+            let end = start
+                .checked_add(size)
+                .ok_or(BinaryHeaderError::InvalidDataSize)?;
 
-                file_data
-                    .get(start..end)
-                    .ok_or(BinaryHeaderError::InvalidDataSize)
-                    .map(|slice| slice.to_vec())
-            };
+            file_data
+                .get(start..end)
+                .ok_or(BinaryHeaderError::InvalidDataSize)
+                .map(|slice| slice.to_vec())
+        };
 
         let header = match typ {
             IgvmVariableHeaderType::IGVM_VHT_VERSION_STRING | OPTIONAL_VERSION_STRING_HEADER => {
@@ -2102,20 +2107,25 @@ impl IgvmDirectiveHeader {
         let length = length as usize;
         // Extract file data from a given file offest with the given size. File
         // offset of 0 results in no data.
-        let extract_file_data =
-            |file_offset: u32, size: usize| -> Result<Vec<u8>, BinaryHeaderError> {
-                if file_offset == 0 {
-                    return Ok(Vec::new());
-                }
+        let extract_file_data = |file_offset: u32,
+                                 size: usize|
+         -> Result<Vec<u8>, BinaryHeaderError> {
+            if file_offset == 0 {
+                return Ok(Vec::new());
+            }
 
-                let start = (file_offset - file_data_start) as usize;
-                let end = start + size;
+            let start = file_offset
+                .checked_sub(file_data_start)
+                .ok_or(BinaryHeaderError::InvalidDataSize)? as usize;
+            let end = start
+                .checked_add(size)
+                .ok_or(BinaryHeaderError::InvalidDataSize)?;
 
-                file_data
-                    .get(start..end)
-                    .ok_or(BinaryHeaderError::InvalidDataSize)
-                    .map(|slice| slice.to_vec())
-            };
+            file_data
+                .get(start..end)
+                .ok_or(BinaryHeaderError::InvalidDataSize)
+                .map(|slice| slice.to_vec())
+        };
         let header = match typ {
             IgvmVariableHeaderType::IGVM_VHT_PARAMETER_AREA
                 if length == size_of::<IGVM_VHS_PARAMETER_AREA>() =>
@@ -2182,7 +2192,14 @@ impl IgvmDirectiveHeader {
                 match compatibility_mask_to_platforms(header.compatibility_mask) {
                     Some(IgvmPlatformType::VSM_ISOLATION) => {
                         // First read the VbsVpContextHeader at file offset
-                        let start = (header.file_offset - file_data_start) as usize;
+                        let start = header
+                            .file_offset
+                            .checked_sub(file_data_start)
+                            .ok_or(BinaryHeaderError::InvalidDataSize)?
+                            as usize;
+                        if file_data.len() < start {
+                            return Err(BinaryHeaderError::InvalidDataSize);
+                        }
                         let (VbsVpContextHeader { register_count }, remaining_data) =
                             VbsVpContextHeader::read_from_prefix(&file_data[start..])
                                 .map_err(|_| BinaryHeaderError::InvalidDataSize)?; // todo: zerocopy: map_err
@@ -2247,7 +2264,11 @@ impl IgvmDirectiveHeader {
                     }
                     Some(IgvmPlatformType::SEV_SNP) | Some(IgvmPlatformType::SEV_ES) => {
                         // Read the VMSA which is stored as 4K file data.
-                        let start = (header.file_offset - file_data_start) as usize;
+                        let start = header
+                            .file_offset
+                            .checked_sub(file_data_start)
+                            .ok_or(BinaryHeaderError::InvalidDataSize)?
+                            as usize;
                         if file_data.len() < start {
                             return Err(BinaryHeaderError::InvalidDataSize);
                         }
@@ -2271,7 +2292,11 @@ impl IgvmDirectiveHeader {
                     }
                     Some(IgvmPlatformType::NATIVE) | Some(IgvmPlatformType::SEV) => {
                         // Read the context which is stored as 4K file data.
-                        let start = (header.file_offset - file_data_start) as usize;
+                        let start = header
+                            .file_offset
+                            .checked_sub(file_data_start)
+                            .ok_or(BinaryHeaderError::InvalidDataSize)?
+                            as usize;
                         if file_data.len() < start {
                             return Err(BinaryHeaderError::InvalidDataSize);
                         }
@@ -2300,7 +2325,11 @@ impl IgvmDirectiveHeader {
                     }
                     Some(IgvmPlatformType::CCA) => {
                         // Read the context which is stored as 4K file data.
-                        let start = (header.file_offset - file_data_start) as usize;
+                        let start = header
+                            .file_offset
+                            .checked_sub(file_data_start)
+                            .ok_or(BinaryHeaderError::InvalidDataSize)?
+                            as usize;
                         if file_data.len() < start {
                             return Err(BinaryHeaderError::InvalidDataSize);
                         }
