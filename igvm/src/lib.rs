@@ -5897,6 +5897,74 @@ mod tests {
     }
 
     #[test]
+    fn parameter_area_rejects_invalid_file_data_range() {
+        let file_data_start = 4096;
+        for (file_offset, number_of_bytes) in [
+            (file_data_start - 1, PAGE_SIZE_4K),
+            (file_data_start + 1, usize::MAX as u64),
+        ] {
+            let mut headers = Vec::new();
+            append_header(
+                &IGVM_VHS_PARAMETER_AREA {
+                    number_of_bytes,
+                    parameter_area_index: 0,
+                    file_offset,
+                },
+                IgvmVariableHeaderType::IGVM_VHT_PARAMETER_AREA,
+                &mut headers,
+            );
+            let result = IgvmDirectiveHeader::new_from_binary_split(
+                IgvmRevision::V1,
+                &headers,
+                &[0; 2],
+                file_data_start,
+                |_| None,
+            );
+            assert!(
+                matches!(result, Err(BinaryHeaderError::InvalidDataSize)),
+                "offset {file_offset}, size {number_of_bytes}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn vp_context_rejects_offsets_outside_file_data() {
+        let file_data_start = 4096;
+        for platform in [
+            IgvmPlatformType::VSM_ISOLATION,
+            IgvmPlatformType::SEV_SNP,
+            IgvmPlatformType::NATIVE,
+            IgvmPlatformType::CCA,
+        ] {
+            for file_offset in [file_data_start + 2, file_data_start - 1] {
+                let mut headers = Vec::new();
+                append_header(
+                    &IGVM_VHS_VP_CONTEXT {
+                        gpa: 0.into(),
+                        compatibility_mask: 1,
+                        file_offset,
+                        vp_index: 0,
+                        reserved: 0,
+                    },
+                    IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+                    &mut headers,
+                );
+                let result = IgvmDirectiveHeader::new_from_binary_split(
+                    IgvmRevision::V1,
+                    &headers,
+                    &[0],
+                    file_data_start,
+                    |_| Some(platform),
+                );
+                assert!(
+                    matches!(result, Err(BinaryHeaderError::InvalidDataSize)),
+                    "{platform:?}, offset {file_offset}: {result:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_aarch64_vbs_vp_context() {
         let raw_header = IGVM_VHS_VP_CONTEXT {
             gpa: 0.into(),
@@ -5989,6 +6057,26 @@ mod tests {
             Some(file_data),
             Some(IgvmPlatformType::SEV_SNP),
         )
+    }
+
+    #[cfg(feature = "corim")]
+    #[test]
+    fn corim_document_rejects_offset_before_file_data() {
+        let file_data_start = 4096;
+        let mut headers = Vec::new();
+        append_header(
+            &IGVM_VHS_CORIM_DATA {
+                compatibility_mask: 1,
+                file_offset: file_data_start - 1,
+                size_bytes: 1,
+                reserved: 0,
+            },
+            IgvmVariableHeaderType::IGVM_VHT_CORIM_DOCUMENT,
+            &mut headers,
+        );
+        let result =
+            IgvmInitializationHeader::new_from_binary_split(&headers, &[0], file_data_start);
+        assert!(matches!(result, Err(BinaryHeaderError::InvalidDataSize)));
     }
 
     #[cfg(feature = "corim")]
