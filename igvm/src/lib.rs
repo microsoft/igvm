@@ -513,11 +513,16 @@ impl IgvmInitializationHeader {
                 vp_index: _,
                 vtl: _,
             } => {
-                if relocation_region_size % PAGE_SIZE_4K != 0 {
+                if *relocation_region_size == 0
+                    || relocation_region_size % PAGE_SIZE_4K != 0
+                    || relocation_region_gpa
+                        .checked_add(*relocation_region_size)
+                        .is_none()
+                {
                     return Err(BinaryHeaderError::RelocationSize);
                 }
 
-                if relocation_alignment % PAGE_SIZE_4K != 0 {
+                if *relocation_alignment == 0 || relocation_alignment % PAGE_SIZE_4K != 0 {
                     return Err(BinaryHeaderError::RelocationAlignment);
                 }
 
@@ -559,7 +564,7 @@ impl IgvmInitializationHeader {
                     return Err(BinaryHeaderError::UnalignedSize(*used_size));
                 }
 
-                if used_size > size {
+                if *size == 0 || used_size > size || gpa.checked_add(*size).is_none() {
                     return Err(BinaryHeaderError::InvalidPageTableRegionSize);
                 }
 
@@ -2204,14 +2209,19 @@ impl IgvmDirectiveHeader {
 
                             // TODO: single vtl expected
                             match vp_vtl {
-                                Some(vtl) => assert_eq!(vtl, reg.vtl),
+                                Some(vtl) => {
+                                    if vtl != reg.vtl {
+                                        return Err(BinaryHeaderError::InvalidVtl);
+                                    }
+                                }
                                 None => vp_vtl = Some(reg.vtl),
                             }
                         }
 
                         // TODO: only bsp supported
-                        let vp_index = header.vp_index;
-                        assert_eq!(vp_index, 0);
+                        if header.vp_index != 0 {
+                            return Err(BinaryHeaderError::InvalidContext);
+                        }
 
                         let vtl = vp_vtl
                             .ok_or(BinaryHeaderError::NoVbsVpContextRegisters)?
@@ -3464,8 +3474,10 @@ impl IgvmFile {
             return Err(Error::InvalidFixedHeader);
         }
 
-        let file_data_start =
-            fixed_header.variable_header_offset() + fixed_header.variable_header_size();
+        let file_data_start = fixed_header
+            .variable_header_offset()
+            .checked_add(fixed_header.variable_header_size())
+            .ok_or(Error::InvalidFixedHeader)?;
 
         if file_data_start as usize >= total_size {
             return Err(Error::InvalidFixedHeader);
@@ -4797,6 +4809,63 @@ mod tests {
 
         // test platform filter works correctly
         // test state transition checks enforce correct ordering
+
+        #[test]
+        fn fixed_header_rejects_overflowing_variable_header_bounds() {
+            let mut file = vec![0u8; 32];
+            let fixed = IGVM_FIXED_HEADER {
+                magic: IGVM_MAGIC_VALUE,
+                format_version: IGVM_FORMAT_VERSION_1,
+                variable_header_offset: 24,
+                variable_header_size: u32::MAX - 15,
+                total_file_size: 32,
+                checksum: 0,
+            };
+            file[..size_of::<IGVM_FIXED_HEADER>()].copy_from_slice(fixed.as_bytes());
+            assert!(matches!(
+                IgvmFile::new_from_binary(&file, None),
+                Err(Error::InvalidFixedHeader)
+            ));
+        }
+
+        #[test]
+        fn relocatable_regions_reject_zero_or_overflowing_bounds() {
+            for (alignment, gpa, size) in [
+                (0, 0, PAGE_SIZE_4K),
+                (PAGE_SIZE_4K, 0, 0),
+                (PAGE_SIZE_4K, u64::MAX - PAGE_SIZE_4K + 1, PAGE_SIZE_4K),
+            ] {
+                let header = IgvmInitializationHeader::RelocatableRegion {
+                    compatibility_mask: 0x1,
+                    relocation_alignment: alignment,
+                    relocation_region_gpa: gpa,
+                    relocation_region_size: size,
+                    minimum_relocation_gpa: 0,
+                    maximum_relocation_gpa: PAGE_SIZE_4K * 16,
+                    is_vtl2: false,
+                    apply_rip_offset: false,
+                    apply_gdtr_offset: false,
+                    vp_index: 0,
+                    vtl: Vtl::Vtl0,
+                };
+                assert!(header.validate().is_err());
+            }
+
+            for (gpa, size) in [(0, 0), (u64::MAX - PAGE_SIZE_4K + 1, PAGE_SIZE_4K)] {
+                let header = IgvmInitializationHeader::PageTableRelocationRegion {
+                    compatibility_mask: 0x1,
+                    gpa,
+                    size,
+                    used_size: 0,
+                    vp_index: 0,
+                    vtl: Vtl::Vtl0,
+                };
+                assert!(matches!(
+                    header.validate(),
+                    Err(BinaryHeaderError::InvalidPageTableRegionSize)
+                ));
+            }
+        }
     }
 
     mod merge {
@@ -5918,6 +5987,53 @@ mod tests {
             Some(file_data),
             Some(IgvmPlatformType::VSM_ISOLATION),
         )
+    }
+
+    #[test]
+    fn vbs_vp_context_rejects_mismatched_vtl_and_nonzero_vp_index() {
+        let file_data_start = 4096;
+        let reg = |vtl| VbsVpContextRegister {
+            vtl,
+            register_name: HvX64RegisterName::Rip.0.into(),
+            mbz: [0; 11],
+            register_value: HvRegisterValue::from(0x1000u64).0.to_ne_bytes(),
+        };
+        let parse = |vp_index, regs: &[VbsVpContextRegister]| {
+            let reg_header = VbsVpContextHeader {
+                register_count: regs.len() as u32,
+            };
+            let mut file_data = reg_header.as_bytes().to_vec();
+            file_data.extend_from_slice(regs.as_bytes());
+            let mut headers = Vec::new();
+            append_header(
+                &IGVM_VHS_VP_CONTEXT {
+                    gpa: 0.into(),
+                    compatibility_mask: 1,
+                    file_offset: file_data_start,
+                    vp_index,
+                    reserved: 0,
+                },
+                IgvmVariableHeaderType::IGVM_VHT_VP_CONTEXT,
+                &mut headers,
+            );
+            IgvmDirectiveHeader::new_from_binary_split(
+                IgvmRevision::V1,
+                &headers,
+                &file_data,
+                file_data_start,
+                |_| Some(IgvmPlatformType::VSM_ISOLATION),
+            )
+            .map(|(header, _)| header)
+        };
+
+        assert!(matches!(
+            parse(0, &[reg(0), reg(2)]),
+            Err(BinaryHeaderError::InvalidVtl)
+        ));
+        assert!(matches!(
+            parse(1, &[reg(0)]),
+            Err(BinaryHeaderError::InvalidContext)
+        ));
     }
 
     #[test]
